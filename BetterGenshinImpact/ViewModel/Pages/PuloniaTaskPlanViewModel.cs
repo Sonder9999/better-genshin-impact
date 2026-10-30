@@ -64,7 +64,7 @@ public partial class PuloniaTaskPlanViewModel : ViewModel, IDropTarget
     /// 页面底部的最近操作结果。
     /// </summary>
     [ObservableProperty]
-    private string _statusMessage = "在任务列表中右键添加任务；所有修改都会自动保存。";
+    private string _statusMessage = "使用工具栏“添加”或在任务列表中右键添加任务；所有修改都会自动保存。";
 
     /// <summary>
     /// 普通任务计划列表，即编辑会话中的普通计划集合。
@@ -295,41 +295,41 @@ public partial class PuloniaTaskPlanViewModel : ViewModel, IDropTarget
     /// 在指定节点位置新增地图追踪任务。
     /// </summary>
     [RelayCommand]
-    private void AddPathingTask(PuloniaTaskNodeViewModel? targetNode)
-        => AddTask(targetNode, "pathing");
+    private Task AddPathingTask(PuloniaTaskNodeViewModel? targetNode)
+        => AddTaskAsync(targetNode, "pathing");
 
     /// <summary>
     /// 在指定节点位置新增 JS 脚本任务。
     /// </summary>
     [RelayCommand]
-    private void AddJavascriptTask(PuloniaTaskNodeViewModel? targetNode)
-        => AddTask(targetNode, "javascript");
+    private Task AddJavascriptTask(PuloniaTaskNodeViewModel? targetNode)
+        => AddTaskAsync(targetNode, "javascript");
 
     /// <summary>
     /// 在指定节点位置新增录制回放任务。
     /// </summary>
     [RelayCommand]
-    private void AddKeyMouseTask(PuloniaTaskNodeViewModel? targetNode)
-        => AddTask(targetNode, "keymouse");
+    private Task AddKeyMouseTask(PuloniaTaskNodeViewModel? targetNode)
+        => AddTaskAsync(targetNode, "keymouse");
 
     /// <summary>
     /// 在指定节点位置新增 Shell 任务。
     /// </summary>
     [RelayCommand]
-    private void AddShellTask(PuloniaTaskNodeViewModel? targetNode)
-        => AddTask(targetNode, "shell");
+    private Task AddShellTask(PuloniaTaskNodeViewModel? targetNode)
+        => AddTaskAsync(targetNode, "shell");
 
     /// <summary>
     /// 在指定节点位置新增进程内 C# 任务。
     /// </summary>
     [RelayCommand]
-    private void AddCSharpTask(PuloniaTaskNodeViewModel? targetNode)
-        => AddTask(targetNode, "csharp");
+    private Task AddCSharpTask(PuloniaTaskNodeViewModel? targetNode)
+        => AddTaskAsync(targetNode, "csharp");
 
     /// <summary>
     /// 按类型在显式目标节点处建立叶子任务。
     /// </summary>
-    private void AddTask(PuloniaTaskNodeViewModel? targetNode, string taskType)
+    private async Task AddTaskAsync(PuloniaTaskNodeViewModel? targetNode, string taskType)
     {
         if (targetNode is null)
             return;
@@ -340,18 +340,12 @@ public partial class PuloniaTaskPlanViewModel : ViewModel, IDropTarget
             return;
         var task = creation.Task;
 
-        // 2. JS 项目声明了 settings_ui 时，与独立任务一致在添加后弹出设置窗口；取消则不添加
-        if (creation.JavaScriptSettingItems.Count > 0)
-        {
-            var settingsViewModel = new PuloniaJsScriptSettingsDialogViewModel(task.Name, creation.JavaScriptSettingItems,
-                task.Parameters["settings"] as JObject, isCreation: true);
-            if (PuloniaJsScriptSettingsDialog.Show(settingsViewModel, Application.Current.MainWindow) is not { } settings)
-                return;
-            if (settings.Count > 0)
-                task.Parameters["settings"] = settings;
-            else
-                task.Parameters.Remove("settings");
-        }
+        // 2. JS 项目声明了 settings_html 或 settings_ui 时，与独立任务一致在添加后弹出设置窗口；取消则不添加
+        var resourceBaseDirectory = Session.TaskService.Definitions
+            .FirstOrDefault(definition => definition.TaskType == task.TaskType)?.ResourceBaseDirectory;
+        if (!await PuloniaJavaScriptTaskCreationSettings.EditAsync(creation, resourceBaseDirectory,
+                basicFormEdited: false, Application.Current.MainWindow))
+            return;
 
         // 3. 确认后才一次插入任务树
         if (!TryGetInsertionPoint(targetNode, out var document, out var parent, out var index))
@@ -677,6 +671,8 @@ public partial class PuloniaTaskPlanViewModel : ViewModel, IDropTarget
     /// </summary>
     private void NotifyCommandStates()
     {
+        // 文档的选中变化也经由此处通知，工具栏目标随之刷新
+        NotifyToolbarTargets();
         OnPropertyChanged(nameof(CanPaste));
         OnPropertyChanged(nameof(CanAddPlanReference));
         OnPropertyChanged(nameof(CanRunPlan));

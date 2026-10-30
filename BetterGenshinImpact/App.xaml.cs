@@ -20,7 +20,7 @@ using BetterGenshinImpact.GameTask.AutoSkip.Audio;
 using BetterGenshinImpact.GameTask.Music.Service;
 using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Diagnostics;
-using BetterGenshinImpact.ViewModel.Pages.QuestVoiceSettings;
+using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
 using BetterGenshinImpact.GameTask.Runtime;
 using BetterGenshinImpact.GameTask.Runtime.Win32;
 using BetterGenshinImpact.GameTask.Runtime.WebPage;
@@ -37,9 +37,11 @@ using BetterGenshinImpact.Pulonia.Executors;
 using BetterGenshinImpact.Pulonia.Remote;
 using BetterGenshinImpact.Pulonia.Services;
 using BetterGenshinImpact.Service;
+using BetterGenshinImpact.Service.AccountRecords;
 using BetterGenshinImpact.Service.ChildSession;
 using BetterGenshinImpact.Service.ExternalAccess;
 using BetterGenshinImpact.Service.ExternalAccess.Logging;
+using BetterGenshinImpact.Service.Guide;
 using BetterGenshinImpact.Service.Instance;
 using BetterGenshinImpact.Service.I18n;
 using BetterGenshinImpact.Service.Interface;
@@ -50,6 +52,7 @@ using BetterGenshinImpact.View.Mask;
 using BetterGenshinImpact.View.Pages;
 using BetterGenshinImpact.View.Windows;
 using BetterGenshinImpact.ViewModel;
+using BetterGenshinImpact.ViewModel.Controls;
 using BetterGenshinImpact.ViewModel.Pages;
 using BetterGenshinImpact.ViewModel.Pages.View;
 using BetterGenshinImpact.ViewModel.SoloTaskSettings;
@@ -283,14 +286,19 @@ public partial class App : Application
                 services.AddView<PuloniaTaskPlanPage, PuloniaTaskPlanViewModel>();
                 services.AddView<PuloniaOneDragonPage, PuloniaOneDragonViewModel>();
                 services.AddView<PuloniaTaskHistoryPage, PuloniaTaskHistoryViewModel>();
+                services.AddView<AccountRecordsPage, AccountRecordsPageViewModel>();
+                services.AddSingleton<InventoryCatalog>();
+                services.AddSingleton<InventoryStore>();
+                services.AddSingleton<InventoryIconCache>();
+                // 图标需要重新扫描或上传才能补齐，独立登记并要求确认清理。
+                services.AddSingleton<IStorageAreaProvider>(sp => sp.GetRequiredService<InventoryIconCache>());
+                services.AddTransient<AccountRecordsInventoryViewModel>();
                 services.AddView<MusicPage, MusicPageViewModel>();
-                services.AddView<QuestVoicePage, QuestVoicePageViewModel>();
-                services.AddSingleton<QuestVoiceSettingsPage>();
-                services.AddSingleton<GptSovitsSettingsViewModel>();
-                services.AddSingleton<QuestVoiceGptSettingsPage>();
-                services.AddSingleton<OtherEnginesSettingsViewModel>();
-                services.AddSingleton<QuestVoiceOtherEnginesPage>();
-                services.AddSingleton(sp => new QuestVoiceSessionFactory(all.QuestVoiceConfig, Core.Config.Global.StartUpPath));
+                // 自动配音：入口为实时触发页卡片，设置在独立窗口；设置模型为单例以保留草稿。
+                services.AddSingleton<RoutingCatalogStore>();
+                services.AddSingleton<QuestVoiceSettingsViewModel>();
+                services.AddSingleton<QuestVoiceCardViewModel>();
+                services.AddSingleton(sp => new QuestVoiceSessionFactory(all.QuestVoiceConfig, Core.Config.Global.StartUpPath, sp.GetRequiredService<BgiOnnxFactory>()));
                 services.AddSingleton<IQuestVoiceSessionFactory>(sp => sp.GetRequiredService<QuestVoiceSessionFactory>());
                 services.AddSingleton<QuestVoiceSessionController>();
                 services.AddSingleton<QuestVoiceService>();
@@ -299,6 +307,7 @@ public partial class App : Application
                 services.AddTransient<WebImageInputViewModel>();
                 // services.AddView<PathingConfigView, PathingConfigViewModel>();
                 services.AddView<KeyBindingsSettingsPage, KeyBindingsSettingsPageViewModel>();
+                services.AddView<GuideWindowSettingsPage, GuideWindowSettingsPageViewModel>();
 
                 // 一条龙 ViewModels
                 // services.AddSingleton<CraftViewModel>();
@@ -329,6 +338,17 @@ public partial class App : Application
                 services.AddTransient<MaskWindow>();
                 services.AddSingleton<Func<MaskWindow>>(sp => () => sp.GetRequiredService<MaskWindow>());
                 services.AddSingleton<IMaskWindowHost, MaskWindowHost>();
+                // 悬浮小窗：服务只依赖窗口接口，窗口按需创建，见 Docs/design/guide-window.md
+                services.AddSingleton<GuideLibraryStore>();
+                services.AddTransient<GuideWindowViewModel>();
+                services.AddTransient<GuideWindow>();
+                services.AddSingleton<Func<IGuideWindowView>>(sp => () => sp.GetRequiredService<GuideWindow>());
+                services.AddTransient<GuideSubtitleWindowViewModel>();
+                services.AddTransient<GuideSubtitleWindow>();
+                services.AddSingleton<Func<IGuideSubtitleView>>(sp => () => sp.GetRequiredService<GuideSubtitleWindow>());
+                services.AddSingleton<GuideWindowService>();
+                services.AddSingleton<IGuideWindowService>(sp => sp.GetRequiredService<GuideWindowService>());
+                services.AddHostedService(sp => sp.GetRequiredService<GuideWindowService>());
                 services.AddSingleton<DialogueOptionVoiceDiagnosticState>();
                 services.AddSingleton<DialogueOptionVoiceDiagnosticService>();
                 services.AddHostedService(sp => sp.GetRequiredService<DialogueOptionVoiceDiagnosticService>());
@@ -509,6 +529,8 @@ public partial class App : Application
             SoloTaskSettingsTemplates.Register(Current.Resources, App.GetService<SoloTaskRegistry>()!);
             await _host.StartAsync();
             ServerTimeHelper.Initialize(_host.Services.GetRequiredService<IServerTimeProvider>());
+            // 自动配音随截图器和开关自动启停，启动时创建服务以订阅运行环境、任务模式和开关。
+            _host.Services.GetRequiredService<QuestVoiceService>();
             if (InstanceBootstrap.Current?.Context.IsRoot == true)
             {
                 // 宿主启动完成后实例上下文已初始化；主实例尽力清理遗留锁，失败也不影响启动。

@@ -63,7 +63,24 @@ public static class WebViewProfiles
     };
 
     /// <summary>
+    /// 悬浮小窗网页：清理时只清缓存，保留 B 站等网站的登录
+    /// </summary>
+    public static readonly WebViewProfile Guide = new(WebViewEnvironments.Guide, WebViewProfile.DefaultProfileName, "悬浮小窗 · 网页缓存")
+    {
+        Description = "悬浮小窗中网页的缓存，保留 B 站等网站的登录和网页设置",
+    };
+
+    /// <summary>
+    /// 脚本 HTML 设置页，与其他网页隔离；每个脚本使用独立主机名，网页存储互不可见
+    /// </summary>
+    public static readonly WebViewProfile ScriptSettings = new(WebViewEnvironments.App, "ScriptSettings", "软件内网页 · 脚本设置页数据")
+    {
+        Description = "脚本 HTML 设置页的缓存和网页数据，不含脚本设置值",
+        ClearsAllData = true,
+    };
+
+    /// <summary>
     /// 全部 Profile，供存储区域登记
     /// </summary>
-    public static IReadOnlyList<WebViewProfile> All { get; } = [Default, HtmlMask];
+    public static IReadOnlyList<WebViewProfile> All { get; } = [Default, HtmlMask, Guide, ScriptSettings];
 }

@@ -48,10 +48,13 @@ public static class PuloniaTaskFieldNames
         { "training_guide_low_ar_adaptation_enabled", "低冒险等阶适配" },
         { "training_guide_fallback_domain_name", "备选秘境" },
         { "training_guide_fallback_sunday_selected_value", "备选秘境周日奖励序号" },
+        { "material_overflow_domain_name", "盛材移涌秘境" }, { "blessing_overflow_domain_name", "祝圣移涌秘境" },
         { "training_targets_json", "自定义培养目标" },
 
         // 1.2 体力计划参数与结果
         { "max_resin", "体力用量（0 为全部）" }, { "craft_condensed_first", "优先合成浓缩树脂" },
+        { "event_priority", "优先满足活动" }, { "event_strict_resin", "严格使用 60 树脂" },
+        { "dire_prestige_target", "危战勋望目标（0 为不限制）" },
         { "domain", "自动秘境" }, { "boss", "自动首领讨伐" },
         { "stygian", "自动幽境危战" }, { "ley_line", "自动地脉花" }, { "craft", "合成浓缩树脂" },
         { "budget", "体力预算" }, { "steps", "执行步骤" },

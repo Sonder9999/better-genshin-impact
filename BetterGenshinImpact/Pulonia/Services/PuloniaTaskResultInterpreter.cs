@@ -42,8 +42,13 @@ public static class PuloniaTaskResultInterpreter
     private static readonly string[] CollectionKeys =
     [
         "collection_material", "collection_rule", "collection_rule_source", "collection_last_success_at",
-        "collection_next_eligible_at", "collection_basis"
+        "collection_next_eligible_at"
     ];
+
+    /// <summary>
+    /// 每个地图追踪结果都相同的固定说明（采集完成依据），核验边界已在提示中说明，不逐条展示。
+    /// </summary>
+    private const string CollectionBasisKey = "collection_basis";
 
     /// <summary>路线 CD 结果中以 UTC ISO 字符串保存的时间字段，展示时转换为本机时间。</summary>
     private static readonly HashSet<string> CollectionTimeKeys =
@@ -82,9 +87,7 @@ public static class PuloniaTaskResultInterpreter
         var entries = new List<PuloniaTaskResultEntry>();
         var handled = new HashSet<string>(StringComparer.Ordinal);
         var data = result.Data;
-        // 1. 执行器给出的原因码放在最前，便于按原因筛查失败与跳过
-        if (!string.IsNullOrWhiteSpace(result.ReasonCode))
-            entries.Add(new PuloniaTaskResultEntry("原因码", PuloniaTaskResultEntryKind.Value, new JValue(result.ReasonCode)));
+        // 1. 原因码是机器可读标识，界面放在技术详情中，结果消息已说明原因，这里不重复列出
         // 2. 奖励汇总（ResinClaimData 的 rewards.items）由界面逐行展示为“名称 ×数量”。
         if (TryReadRewards(result, out var rewards))
         {
@@ -115,7 +118,7 @@ public static class PuloniaTaskResultInterpreter
                     AddKeyField(entries, handled, data, key, label);
                 break;
             case "pathing":
-                AddPathingFields(entries, handled, data);
+                AddPathingFields(entries, handled, data, PuloniaCollectionCooldown.IsCooldownSkip(result));
                 break;
             case "csharp":
                 if (data.ContainsKey("sum"))
@@ -146,6 +149,15 @@ public static class PuloniaTaskResultInterpreter
                 new JValue(FormatResinPlanBudget(budget))));
         }
 
+        // 活动识别结果一行；未执行识别（旧记录或 null）时不展示
+        if (data.ContainsKey("events"))
+        {
+            handled.Add("events");
+            if (data["events"] is JObject events)
+                entries.Add(new PuloniaTaskResultEntry("活动识别", PuloniaTaskResultEntryKind.Value,
+                    new JValue(FormatResinPlanEvents(events))));
+        }
+
         if (data["steps"] is not JArray steps)
             return;
         handled.Add("steps");
@@ -168,6 +180,36 @@ public static class PuloniaTaskResultInterpreter
                    + $"；领奖共消耗 {budget.Value<int?>("spent_points") ?? 0} 点";
         var crafted = budget.Value<int?>("crafted_condensed") ?? 0;
         return crafted > 0 ? text + $"；合成浓缩 {crafted} 个" : text;
+    }
+
+    /// <summary>格式化体力计划的活动识别：移涌活动与紊乱爆发期状态。</summary>
+    private static string FormatResinPlanEvents(JObject events)
+    {
+        if (events.Value<bool?>("recognized") != true)
+        {
+            var message = events.Value<string>("message");
+            return string.IsNullOrWhiteSpace(message) ? "未能识别活动页，按没有活动处理" : $"未能识别活动页（{message}），按没有活动处理";
+        }
+
+        // 每个移涌活动显示为“名称（今日剩余双倍 3/3）”；未知的活动值（例如后续版本新增）按原文展示
+        var overflows = (events["overflows"] as JArray)?.OfType<JObject>()
+            .Select(item =>
+            {
+                var text = item.Value<string>("event") ?? string.Empty;
+                var name = Enum.TryParse<ResinPlanOverflowEvent>(text, out var value) ? ResinPlanEventDetector.DisplayName(value) : text;
+                var remaining = ResinPlanEventDetector.FormatRemaining(new ResinPlanOverflowStatus
+                {
+                    RemainingClaims = item.Value<int?>("remaining_claims"),
+                    DailyClaims = item.Value<int?>("daily_claims")
+                });
+                return $"{name}（今日剩余双倍 {remaining}）";
+            })
+            .ToArray() ?? [];
+        var burst = Enum.TryParse<StygianBurstState>(events.Value<string>("stygian_burst"), out var state)
+            ? ResinPlanEventDetector.DisplayName(state)
+            : "未识别";
+        return (overflows.Length > 0 ? "移涌活动：" + string.Join("、", overflows) : "没有移涌活动")
+               + "；幽境危战紊乱爆发期：" + burst;
     }
 
     /// <summary>格式化体力计划的一个阶段：结果、对象、说明与本步奖励。</summary>
@@ -201,9 +243,14 @@ public static class PuloniaTaskResultInterpreter
 
     /// <summary>
     /// 解释地图追踪结果：实际执行的路线按 is_success 展示完整执行、失败原因与拾取统计；
-    /// 没有执行结果的节点（执行器异常、因路线 CD 跳过）只标记“路线完整执行”未返回，并展示 CD 字段。
+    /// 执行器异常没有执行结果时只标记“路线完整执行”未返回；因路线 CD 跳过的节点只展示 CD 字段。
     /// </summary>
-    private static void AddPathingFields(List<PuloniaTaskResultEntry> entries, HashSet<string> handled, JObject data)
+    /// <param name="entries">结果项列表。</param>
+    /// <param name="handled">已处理的字段名。</param>
+    /// <param name="data">节点结果数据。</param>
+    /// <param name="isCooldownSkip">节点是否因路线 CD 跳过（未执行）。</param>
+    private static void AddPathingFields(List<PuloniaTaskResultEntry> entries, HashSet<string> handled, JObject data,
+        bool isCooldownSkip)
     {
         if (data.ContainsKey("is_success"))
         {
@@ -223,9 +270,12 @@ public static class PuloniaTaskResultInterpreter
                 ? new PuloniaTaskResultEntry("拾取物品", PuloniaTaskResultEntryKind.CollectedItems, items)
                 : new PuloniaTaskResultEntry("拾取物品", PuloniaTaskResultEntryKind.NotCounted));
         }
-        else
-            // 执行器异常或因 CD 跳过时没有执行结果，明确标记未返回，不推断成功或失败。
+        else if (!isCooldownSkip)
+            // 执行器异常时没有执行结果，明确标记未返回，不推断成功或失败；因 CD 跳过的节点本来就没有执行，不再标注。
             AddKeyField(entries, handled, data, "is_success", "路线完整执行");
+        else
+            handled.Add("is_success");
+        handled.Add(CollectionBasisKey);
         foreach (var key in CollectionKeys.Where(data.ContainsKey))
         {
             if (!CollectionTimeKeys.Contains(key))

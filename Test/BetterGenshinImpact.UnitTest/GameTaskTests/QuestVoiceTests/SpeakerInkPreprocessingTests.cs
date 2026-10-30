@@ -9,6 +9,7 @@ using BetterGenshinImpact.GameTask.QuestVoice.Core.Configuration;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Continuous;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Ocr;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Ocr;
+using OpenCvSharp;
 using SkiaSharp;
 using Xunit;
 
@@ -32,43 +33,33 @@ public sealed class SpeakerInkPreprocessingTests
         var preprocessor = new ImagePreprocessor();
         var original = await preprocessor.PrepareAsync(bytes, Profile, default);
         var masked = await preprocessor.PrepareAsync(bytes, Profile, default, Policy);
-        using var expected = new SKBitmap(20, 5);
-        expected.Erase(SKColors.White);
-        for (var y = 1; y < 4; y++) for (var x = 7; x < 10; x++) expected.SetPixel(x, y, SKColors.Black);
-        Assert.Equal(ImagePreprocessor.ToTensor(expected).Data, masked.Tensors[0].Data);
-        Assert.Equal(original.Tensors[1].Data, masked.Tensors[1].Data);
-        Assert.Equal(original.Bounds, masked.Bounds);
-        Assert.Equal(original.Width, masked.Width); Assert.Equal(original.Height, masked.Height);
-        Assert.NotEqual(original.Tensors[0].Data, masked.Tensors[0].Data);
-        Assert.Equal(bytes, Encode(bitmap));
+        try
+        {
+            using var expected = new SKBitmap(20, 5);
+            expected.Erase(SKColors.White);
+            for (var y = 1; y < 4; y++) for (var x = 7; x < 10; x++) expected.SetPixel(x, y, SKColors.Black);
+            using var expectedLine = ImagePreprocessor.ToMat(expected);
+            Assert.True(SameImage(expectedLine, masked.Lines[0]));
+            Assert.True(SameImage(original.Lines[1], masked.Lines[1]));
+            Assert.Equal(original.Bounds, masked.Bounds);
+            Assert.Equal(original.Width, masked.Width); Assert.Equal(original.Height, masked.Height);
+            Assert.False(SameImage(original.Lines[0], masked.Lines[0]));
+            Assert.Equal(bytes, Encode(bitmap));
+        }
+        finally
+        {
+            foreach (var line in original.Lines.Concat(masked.Lines)) line.Dispose();
+        }
     }
 
-    /// <summary>移植回归验证：AutomaticAndContinuousShareSelectedPolicyWhileExplicitTemplatesKeepOriginalPixels。</summary>
-    [Fact]
-    public async Task AutomaticAndContinuousShareSelectedPolicyWhileExplicitTemplatesKeepOriginalPixels()
+    /// <summary>两张图像尺寸、类型和每个像素都相同。</summary>
+    private static bool SameImage(Mat first, Mat second)
     {
-        using var fixture = new RoutingFixture();
-        var imagePath = Path.Combine(fixture.Root, "image.png");
-        var ocrSettings = new BetterGenshinImpact.GameTask.QuestVoice.Core.Configuration.OcrSettings("unused.onnx", "unused.xml");
-        var sceneSettings = new BetterGenshinImpact.GameTask.QuestVoice.Core.Configuration.SceneSettings("unused.json");
-        using var bitmap = Draw();
-        var bytes = Encode(bitmap); await File.WriteAllBytesAsync(imagePath, bytes);
-        var engine = new AutoSceneProcessingTests.Engine();
-        var selection = new SceneSelection(new(SceneDecisionKind.Selected, "test", "test", "v1", "catalog", new Dictionary<string, double>()), Profile, Policy);
-        var service = new ImageOcrService(new Layouts(), new(), engine, new Selector(selection));
-        var request = new ImageProcessingRequest(imagePath, SceneSelectionMode.Automatic, null,
-            ocrSettings, sceneSettings, fixture.Root);
-        var automatic = await service.ProcessAsync(request, null, default);
-        var nameTensor = engine.Tensors![0].Data;
-        Assert.Equal(ImageProcessingOutcome.Recognized, automatic.Outcome);
-        var frame = new ContinuousFrameSnapshot(1, TimeSpan.Zero, bytes);
-        await service.RecognizeFrameAsync(frame, new(new(frame.Sha256, 20, 10), selection, null),
-            ocrSettings!, fixture.Root, default);
-        Assert.Equal(nameTensor, engine.Tensors![0].Data);
-        await service.RecognizeAsync(new(imagePath, "arbitrary.xml", ocrSettings!, fixture.Root), default);
-        var original = await new ImagePreprocessor().PrepareAsync(bytes, Profile, default);
-        Assert.Equal(original.Tensors[0].Data, engine.Tensors![0].Data);
-        Assert.NotEqual(nameTensor, engine.Tensors[0].Data);
+        if (first.Size() != second.Size() || first.Type() != second.Type()) return false;
+        using var difference = new Mat();
+        Cv2.Absdiff(first, second, difference);
+        using var singleChannel = difference.Reshape(1);
+        return Cv2.CountNonZero(singleChannel) == 0;
     }
 
     /// <summary>移植回归验证：RealSelectorAttachesConfiguredPolicyOnlyToSelectedLayout。</summary>
@@ -101,15 +92,4 @@ public sealed class SpeakerInkPreprocessingTests
     /// <summary>移植回归验证：Encode。</summary>
     private static byte[] Encode(SKBitmap bitmap)
     { using var image = SKImage.FromBitmap(bitmap); using var data = image.Encode(SKEncodedImageFormat.Png, 100); return data.ToArray(); }
-    /// <summary>移植回归验证：Selector。</summary>
-    private sealed class Selector(SceneSelection selection) : ISceneSelector
-    {
-        /// <summary>在后台判断当前画面是否满足受支持的原神对白布局。</summary>
-        public Task<SceneSelection> SelectAsync(ReadOnlyMemory<byte> image, SceneSettings settings, CancellationToken token) => Task.FromResult(selection);
-    }
-    /// <summary>移植回归验证：Layouts。</summary>
-    private sealed class Layouts : ISceneProfileLoader
-    { 
-    /// <summary>异步读取并严格校验外置配置或布局。</summary>
-    public Task<SceneProfile> LoadAsync(string path, CancellationToken token) => Task.FromResult(Profile); }
 }

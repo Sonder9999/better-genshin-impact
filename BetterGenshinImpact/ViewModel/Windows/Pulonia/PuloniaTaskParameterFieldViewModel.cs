@@ -36,6 +36,9 @@ public enum PuloniaTaskParameterEditorKind
     /// <summary>统一战斗策略选择器。</summary>
     CombatStrategy,
 
+    /// <summary>秘境级联选择框，只列出可手动刷取的秘境，值为秘境名称。</summary>
+    Domain,
+
     /// <summary>公共树脂入口卡片，确认后整体替换嵌套对象。</summary>
     ResinUsage,
 
@@ -97,6 +100,10 @@ public partial class PuloniaTaskParameterFieldViewModel : ObservableObject
 
     /// <summary>是否显示统一战斗策略选择器。</summary>
     public bool IsCombatStrategyEditor => EditorKind == PuloniaTaskParameterEditorKind.CombatStrategy;
+    /// <summary>是否显示秘境级联选择框。</summary>
+    public bool IsDomainEditor => EditorKind == PuloniaTaskParameterEditorKind.Domain;
+    /// <summary>秘境选择框的选项列表类型（见 TrainingGuideDomainOptions）；非秘境字段为 null。</summary>
+    public string? DomainPicker { get; }
     /// <summary>是否使用树脂入口，其他标量与 JSON 编辑器均不显示。</summary>
     public bool IsResinUsageEditor => EditorKind == PuloniaTaskParameterEditorKind.ResinUsage;
     /// <summary>树脂字段的独立草稿入口，非树脂字段为 null。</summary>
@@ -189,7 +196,11 @@ public partial class PuloniaTaskParameterFieldViewModel : ObservableObject
         Choices = _choiceValues.Keys.ToArray();
         AllowedStrategyKinds = (CombatStrategyKind)(schema.Value<int?>("x-combat-strategy-kinds") ?? (int)CombatStrategyKind.WithoutCombo);
         var isCombatStrategy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower.ConvertName(name) is "strategy_name" or "combat_strategy_path";
-        EditorKind = Resin is not null ? PuloniaTaskParameterEditorKind.ResinUsage : isCombatStrategy ? PuloniaTaskParameterEditorKind.CombatStrategy : Choices.Count > 0
+        // 秘境选择框由界面 Schema 标记启用，标记值为选项列表类型；值仍按普通字符串保存在 TextValue 中。
+        DomainPicker = schema["x-domain-picker"] is JValue { Type: JTokenType.String } picker ? picker.Value<string>() : null;
+        var isDomain = DomainPicker is not null;
+        EditorKind = Resin is not null ? PuloniaTaskParameterEditorKind.ResinUsage : isCombatStrategy ? PuloniaTaskParameterEditorKind.CombatStrategy
+            : isDomain ? PuloniaTaskParameterEditorKind.Domain : Choices.Count > 0
             ? PuloniaTaskParameterEditorKind.Choice
             : _valueType switch
             {
