@@ -47,6 +47,8 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
     public bool HasCommandError => !string.IsNullOrWhiteSpace(CommandError);
     /// <summary>GPT-SoVITS 的连接与声线库设置。</summary>
     public GptSovitsSettingsViewModel Gpt { get; }
+    /// <summary>全局 Yatta 剧情和预合成状态。</summary>
+    public QuestVoiceStoryWorkspace Story { get; }
     /// <summary>4 个引擎：GPT-SoVITS 在前，其余引擎随后；★ 表示默认引擎。</summary>
     public IReadOnlyList<QuestVoiceEngineEntry> Engines { get; }
     /// <summary>正在编辑的引擎；与默认引擎在同一页可见。</summary>
@@ -64,6 +66,7 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
         _status = service.Status;
         service.Changed += OnServiceChanged;
         Gpt = new GptSovitsSettingsViewModel(this, factory, service);
+        Story = new QuestVoiceStoryWorkspace(factory, Config, service);
         EngineSettingsViewModel[] others =
         [
             new VoicevoxSettingsViewModel(this, factory, service),

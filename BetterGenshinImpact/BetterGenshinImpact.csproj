@@ -316,4 +316,5 @@
 	<ItemGroup>
 		<None Update="Assets\Model\Domain\test_petrified_trees.jpg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
+  <ItemGroup><ProjectReference Include="..\QuestVoice.Games\QuestVoice.Games.csproj" /></ItemGroup>
 </Project>

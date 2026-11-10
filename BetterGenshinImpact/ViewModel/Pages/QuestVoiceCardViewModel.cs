@@ -22,6 +22,8 @@ public partial class QuestVoiceCardViewModel : ObservableObject
     private readonly QuestVoiceService _service;
     /// <summary>设置窗口的单例模型，关闭窗口后保留草稿。</summary>
     private readonly QuestVoiceSettingsViewModel _settings;
+    /// <summary>与设置窗口共享全局剧情和预合成进度。</summary>
+    public QuestVoiceStoryWorkspace Story => _settings.Story;
     /// <summary>WPF 调度器只异步投递，避免与核心同步通知互锁。</summary>
     private readonly Dispatcher _dispatcher;
     /// <summary>合并高频采样状态，UI 最多一个待处理通知。</summary>

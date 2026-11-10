@@ -60,3 +60,6 @@ __pycache__/
 
 # Claude
 .claude/*
+
+# QuestVoice local build, validation and temporary outputs
+/artifacts/
