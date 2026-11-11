@@ -68,7 +68,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>全局章节目录。</summary>
     public ObservableCollection<YattaChapter> Chapters { get; } = [];
     /// <summary>当前章节的中日双语节点，列表容器负责虚拟化。</summary>
-    public ObservableCollection<QuestVoiceDialogueRow> Lines { get; } = [];
+    public ObservableCollection<QuestVoiceDialogueRow> Lines { get; private set; } = [];
     /// <summary>搜索仅筛选视图，不改变全局剧情选择。</summary>
     public IEnumerable<YattaChapter> FilteredChapters => string.IsNullOrWhiteSpace(ChapterSearch)
         ? Chapters : Chapters.Where(c => c.Label.Contains(ChapterSearch.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -148,30 +148,33 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>章节切换只发生于本次的一个全局选择。</summary>
     partial void OnSelectedChapterChanged(YattaChapter? value)
     {
-        if (value is null || IsGenerating) return;
+        if (value is null || IsGenerating || _selectingInternally) return;
         _config.SelectedChapterId = value.Id;
+        _config.SelectedChapterIds = [value.Id];
         Completed = 0; CacheHits = 0; Failed = 0; Total = 0;
         OnPropertyChanged(nameof(ProgressPercent));
         PreSynthesisStatus = "已切换剧情；可预合成当前选择范围。";
         // 列表选择回调期间不立刻重建 ItemsSource，避免 WPF 选择同步递归；载入完成再刷新目录树。
-        _ = LoadChapterAsync(value);
+        _ = LoadSelectionAsync([value], value.Title);
     }
 
     /// <summary>只使用 Yatta 的实际边计算前后关联；相邻列表行不代表剧情图上相邻。</summary>
     partial void OnSelectedLineChanged(QuestVoiceDialogueRow? value)
     {
-        if (value?.Mapping.Chs is not { } node || _pair is null)
+        if (value?.Mapping.Chs is not { } node || _loadedPairs.Count == 0)
         {
             FocusContext = "选择任意对白查看前置与后续节点";
             return;
         }
 
+        var document = _loadedPairs.FirstOrDefault(pair => pair.Chs.ChapterId == node.ChapterId)?.Chs;
+        if (document is null) { FocusContext = "无法定位此章节的关联图"; return; }
         string Describe(string? key) => Lines.FirstOrDefault(line => line.Key == key) is { } row
             ? row.Speaker + "：" + row.Chinese
             : "中间包含结构节点或尚未展开的分支";
-        var previous = _pair.Chs.Edges.Where(edge => edge.TargetKey == node.Key)
+        var previous = document.Edges.Where(edge => edge.TargetKey == node.Key)
             .Select(edge => Describe(edge.FromKey)).Distinct().Take(3).ToArray();
-        var following = _pair.Chs.Edges.Where(edge => edge.FromKey == node.Key)
+        var following = document.Edges.Where(edge => edge.FromKey == node.Key)
             .Select(edge => Describe(edge.TargetKey)).Distinct().Take(3).ToArray();
         FocusContext = "前置：" + (previous.Length > 0 ? string.Join(" / ", previous) : "本任务无直接前置") +
             "  →  当前：" + value.Chinese +
@@ -228,7 +231,6 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             OnPropertyChanged(nameof(FilteredChapters));
             _catalogLoaded = true;
             CatalogStatus = $"{Chapters.Count} 章 · " + (cache ? "本地缓存" : "Yatta 最新目录");
-            SelectedChapter = Chapters.FirstOrDefault(c => c.Id == _config.SelectedChapterId);
             OnCatalogLoaded();
         }
         catch (Exception error)
@@ -237,45 +239,77 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         }
     }
 
-    /// <summary>网络、解析、语言配对在后台执行；取消旧请求，不让迟到结果覆盖当前选择。</summary>
-    private async Task LoadChapterAsync(YattaChapter chapter)
+    /// <summary>
+    /// Loads the full selected Yatta series using the same document loader and cache as the single chapter.
+    /// Old selections are cancelled; a partial/late series cannot silently overwrite the newest selection.
+    /// </summary>
+    private async Task LoadSelectionAsync(IReadOnlyList<YattaChapter> chapters, string selectionName)
     {
         _selectionCancellation?.Cancel();
         var cts = new CancellationTokenSource();
         _selectionCancellation = cts;
-        ChapterStatus = "正在加载 CHS / JP 双语台词…";
-        Lines.Clear();
+        ChapterStatus = $"准备 {chapters.Count} 章的 CHS / JP 双语脚本…";
+        _loadedPairs.Clear();
         _pair = null;
+        Lines = [];
+        TranscriptRows = [];
+        OnPropertyChanged(nameof(Lines));
+        OnPropertyChanged(nameof(TranscriptRows));
+        OnPropertyChanged(nameof(VisibleLines));
         Management?.SetCurrentStorySpeakers([], _config.SpeechLanguage);
+        var loaded = new List<DialogueLanguageMap>();
         try
         {
-            var pair = await QuestLanguagePairLoader.LoadAsync(_loader, chapter.Id, cancellationToken: cts.Token);
-            if (cts.IsCancellationRequested || SelectedChapter?.Id != chapter.Id) return;
-            _pair = pair;
+            for (var index = 0; index < chapters.Count; index++)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                var chapter = chapters[index];
+                ChapterStatus = $"正在读取 {selectionName} · {index + 1}/{chapters.Count} 章：{chapter.Title}";
+                var pair = await QuestLanguagePairLoader.LoadAsync(_loader, chapter.Id,
+                    cancellationToken: cts.Token);
+                cts.Token.ThrowIfCancellationRequested();
+                if (!ReferenceEquals(_selectionCancellation, cts)) return;
+                loaded.Add(pair);
+            }
+            if (!ReferenceEquals(_selectionCancellation, cts)) return;
+            _loadedPairs.AddRange(loaded);
+            _pair = loaded.FirstOrDefault();
             RebuildLines();
-            OnChapterContentLoaded();
-            ChapterStatus = $"{chapter.Title} · {Lines.Count} 条对白，{Lines.Count(x => x.CanSynthesize)} 条可安全配对";
+            ChapterStatus = $"{selectionName} · {_loadedPairs.Count} 章 · {Lines.Count} 条对白 · {Lines.Count(x => x.CanSynthesize)} 条严格双语配对";
         }
-        catch (OperationCanceledException) { }
-        catch (Exception error) { if (ReferenceEquals(cts, _selectionCancellation)) { ChapterStatus = "加载失败：" + error.Message; RefreshCatalogRows(); } }
-        finally { if (ReferenceEquals(cts, _selectionCancellation)) _selectionCancellation = null; cts.Dispose(); }
+        catch (OperationCanceledException)
+        {
+            if (ReferenceEquals(_selectionCancellation, cts)) ChapterStatus = "剧情加载已取消。";
+        }
+        catch (Exception error)
+        {
+            if (ReferenceEquals(_selectionCancellation, cts))
+                ChapterStatus = $"系列加载失败（已读取 {loaded.Count}/{chapters.Count} 章，未采用不完整范围）：{error.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_selectionCancellation, cts)) _selectionCancellation = null;
+            cts.Dispose();
+        }
     }
-
     /// <summary>重新渲染旅行者昵称/性别模板，不修改来源 Yatta 文本。</summary>
     private void RebuildLines()
     {
-        if (_pair is null || IsGenerating) return;
+        if (_loadedPairs.Count == 0 || IsGenerating) return;
         var selectedKey = SelectedLine?.Key;
         var context = new QuestTextContext(_config.TravelerNickname,
             _config.FemaleTraveler ? TravelerGender.Female : TravelerGender.Male);
-        Lines.Clear();
-        foreach (var mapping in _pair.Entries.Where(e => e.Chs is { Type: "SingleDialog" }))
-        {
-            var cn = mapping.Chs!;
-            string Render(QuestNode? node) => node?.Texts.FirstOrDefault()?.Template.Render(context)?.Trim() ?? "";
-            Lines.Add(new(mapping, cn.Role, Render(cn), Render(mapping.Jp)));
-        }
-        SelectedLine = Lines.FirstOrDefault(x => x.Key == selectedKey);
+        var updated = new List<QuestVoiceDialogueRow>();
+        foreach (var pair in _loadedPairs)
+            foreach (var mapping in pair.Entries.Where(e => e.Chs is { Type: "SingleDialog" }))
+            {
+                var cn = mapping.Chs!;
+                string Render(QuestNode? n) => n?.Texts.FirstOrDefault()?.Template.Render(context)?.Trim() ?? "";
+                updated.Add(new(mapping, cn.Role, Render(cn), Render(mapping.Jp)));
+            }
+        Lines = new ObservableCollection<QuestVoiceDialogueRow>(updated);
+        OnPropertyChanged(nameof(Lines));
+        RebuildTranscript();        SelectedLine = Lines.FirstOrDefault(x => x.Key == selectedKey);
         Management?.SetCurrentStorySpeakers(Lines.Select(line => line.Speaker), _config.SpeechLanguage);
         UpdateCurrentScope();
     }
@@ -284,8 +318,8 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     [RelayCommand]
     private async Task StartPreSynthesisAsync()
     {
-        if (IsGenerating || _pair is null) { PreSynthesisStatus = "请先加载剧情章节及双语对白。"; return; }
-        var entries = VisibleLines.Where(x => x.CanSynthesize).ToArray();
+        if (IsGenerating || _loadedPairs.Count == 0) { PreSynthesisStatus = "请先加载完整剧情系列的双语对白。"; return; }
+        var entries = Lines.Where(x => x.CanSynthesize).ToArray();
         if (entries.Length == 0) { PreSynthesisStatus = "当前章节没有可安全配对的对白。"; return; }
         var requests = entries.Select(x => new QuestPreSynthesisLine(x.Key, x.Speaker,
             _config.SpeechLanguage == "jpn" ? x.Japanese : x.Chinese)).ToArray();

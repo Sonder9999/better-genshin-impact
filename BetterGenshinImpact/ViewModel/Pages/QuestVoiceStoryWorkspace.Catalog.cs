@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuestVoice.Core;
@@ -12,42 +11,33 @@ using QuestVoice.Games.Genshin;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 
-/// <summary>Flattened, virtualized hierarchy row. A folder is navigation, not an implicit selection of every chapter.</summary>
-public sealed record QuestVoiceCatalogRow(string Key, string Kind, string Title, string Detail,
-    int Depth, YattaChapter? Chapter = null, string? StoryId = null, string? TaskId = null,
-    bool CanExpand = false, bool Expanded = false)
+/// <summary>One click loads the whole series; rows are choices, not folders.</summary>
+public sealed record QuestVoiceCatalogRow(
+    string Key, string Kind, string Title, string Detail, IReadOnlyList<string> ChapterIds,
+    YattaChapter? Chapter = null)
 {
-    public string ExpandMarker => CanExpand ? (Expanded ? "−" : "+") : "·";
-    public Thickness Indent => new(Math.Min(Depth, 3) * 18, 0, 0, 0);
-    public string DisplayKind => Kind switch
-    {
-        "series" => "系列", "chapter" => "章节", "story" => "主任务",
-        "task" => "子任务", _ => Kind
-    };
+    public string DisplayKind => Kind == "series" ? "系列" : "章节";
 }
 
-/// <summary>
-/// Shares the existing global chapter and actual Yatta documents; unlike a second selector,
-/// expanding/searching here never fetches or generates audio. Task focus limits the P1 scope only.
-/// </summary>
 public partial class QuestVoiceStoryWorkspace
 {
     private static readonly Regex ChapterSuffix = new(
         @"[\s·・:：-]*(序章|终章|終章|最终章|最終章|第[一二三四五六七八九十百零〇0-9]+章)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private readonly HashSet<string> _expandedCatalog = new(StringComparer.Ordinal);
-    private bool _rebuildingCatalog;
 
+    private readonly List<DialogueLanguageMap> _loadedPairs = [];
+    private bool _rebuildingCatalog;
+    private bool _selectingInternally;
     public ObservableCollection<QuestVoiceCatalogRow> CatalogRows { get; } = [];
+    public ObservableCollection<QuestVoiceTranscriptRow> TranscriptRows { get; private set; } = [];
 
     [ObservableProperty] private QuestVoiceCatalogRow? _selectedCatalogRow;
-    [ObservableProperty] private string _activeStoryId = "";
-    [ObservableProperty] private string _activeTaskId = "";
-    [ObservableProperty] private string _activeSelectionLabel = "请选择左侧的章节";
-    [ObservableProperty] private string _taskFilterStatus = "选定章节后展开可查看主任务与子任务";
-    public IEnumerable<QuestVoiceDialogueRow> VisibleLines => Lines.Where(row =>
-        (string.IsNullOrEmpty(ActiveStoryId) || row.Mapping.Chs?.StoryId == ActiveStoryId) &&
-        (string.IsNullOrEmpty(ActiveTaskId) || row.Mapping.Chs?.TaskId == ActiveTaskId));
+    [ObservableProperty] private QuestVoiceTranscriptRow? _selectedTranscriptRow;
+    [ObservableProperty] private string _activeSelectionLabel = "请选择剧情系列或章节";
+    [ObservableProperty] private string _taskFilterStatus = "选中系列将加载全部章节及其任务";
+    /// <summary>All loaded dialogue rows are the P1 synthesis scope.</summary>
+    public IEnumerable<QuestVoiceDialogueRow> VisibleLines => Lines;
+    public IReadOnlyList<DialogueLanguageMap> LoadedPairs => _loadedPairs;
 
     private static string ChapterNum(YattaChapter chapter) =>
         chapter.Raw.ValueKind == JsonValueKind.Object &&
@@ -61,146 +51,140 @@ public partial class QuestVoiceStoryWorkspace
         return name.Length > 0 && name != chapterNum ? name : "";
     }
 
+    /// <summary>Chronological chapter order (序章, 第一章, 第二章...) instead of lexical Chinese character order.</summary>
+    private static int ChapterOrder(YattaChapter chapter)
+    {
+        var label = ChapterNum(chapter);
+        if (label.EndsWith("序章", StringComparison.Ordinal)) return 0;
+        if (label.EndsWith("终章", StringComparison.Ordinal) ||
+            label.EndsWith("終章", StringComparison.Ordinal)) return 1000;
+        var match = Regex.Match(label, @"第([一二三四五六七八九十百零〇0-9]+)章$");
+        if (!match.Success) return 500;
+        var value = match.Groups[1].Value;
+        if (int.TryParse(value, out var number)) return number;
+        const string digits = "一二三四五六七八九";
+        static int Digit(char c) => c switch
+        {
+            '一' => 1, '二' => 2, '三' => 3, '四' => 4, '五' => 5,
+            '六' => 6, '七' => 7, '八' => 8, '九' => 9, _ => 0
+        };
+        if (value.Length == 1) return value == "十" ? 10 : Digit(value[0]);
+        var tens = value.IndexOf('十');
+        if (tens >= 0)
+        {
+            var prefix = tens == 0 ? 1 : Digit(value[0]);
+            var ones = tens + 1 == value.Length ? 0 : Digit(value[tens + 1]);
+            return prefix * 10 + ones;
+        }
+        return 500;
+    }
+    private static bool Matches(YattaChapter c, string term) =>
+        c.Label.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+        ChapterNum(c).Contains(term, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>No nested clicks: series and standalone chapters share the same list.</summary>
     private void RefreshCatalogRows()
     {
         if (_rebuildingCatalog) return;
         _rebuildingCatalog = true;
         try
         {
-            var search = ChapterSearch.Trim();
-            bool Searching(string s) => search.Length > 0 && s.Contains(search, StringComparison.OrdinalIgnoreCase);
-            var next = new List<QuestVoiceCatalogRow>();
+            var term = ChapterSearch.Trim();
             var all = Chapters.ToArray();
-            foreach (var grouping in all.Where(x => SeriesName(x).Length > 0)
-                         .GroupBy(SeriesName, StringComparer.Ordinal).OrderBy(x => x.Key, StringComparer.CurrentCulture))
+            var next = new List<QuestVoiceCatalogRow>();
+            foreach (var group in all.Where(c => SeriesName(c).Length > 0)
+                         .GroupBy(SeriesName, StringComparer.Ordinal)
+                         .OrderBy(g => g.Key, StringComparer.CurrentCulture))
             {
-                var chapters = grouping.OrderBy(ChapterNum).ThenBy(x => x.Title, StringComparer.CurrentCulture).ToArray();
-                var seriesKey = "series/" + grouping.Key;
-                var matchingChapters = chapters.Where(c => Searching(c.Label) || Searching(ChapterNum(c))).ToArray();
-                if (search.Length > 0 && !Searching(grouping.Key) && matchingChapters.Length == 0
-                    && !chapters.Any(c => c.Id == SelectedChapter?.Id && LoadedTaskMatchesSearch())) continue;
-                bool open = _expandedCatalog.Contains(seriesKey) || search.Length > 0;
-                next.Add(new(seriesKey, "series", grouping.Key, chapters.Length + " 章",
-                    0, null, CanExpand: true, Expanded: open));
-                if (!open) continue;
-                foreach (var chapter in chapters)
-                    AppendChapter(next, chapter, 1, search, Searching(grouping.Key) || Searching(chapter.Label) || Searching(ChapterNum(chapter)));
+                var chapters = group.OrderBy(ChapterOrder)
+                    .ThenBy(c => c.Id, StringComparer.Ordinal).ToArray();
+                var matchesSeries = term.Length == 0 ||
+                    group.Key.Contains(term, StringComparison.OrdinalIgnoreCase);
+                if (matchesSeries || chapters.Any(c => Matches(c, term)))
+                    next.Add(new("series/" + group.Key, "series", group.Key,
+                        chapters.Length + " 章",
+                        chapters.Select(c => c.Id).ToArray()));
+                // Searching a specific chapter can still choose only that chapter;
+                // normal browsing never requires expanding series.
+                if (term.Length > 0 && !matchesSeries)
+                    foreach (var c in chapters.Where(c => Matches(c, term)))
+                        next.Add(new("chapter/" + c.Id, "chapter", c.Title,
+                            ChapterNum(c), [c.Id], c));
+            }
+            foreach (var c in all.Where(c => SeriesName(c).Length == 0)
+                         .OrderBy(c => c.Title, StringComparer.CurrentCulture))
+            {
+                if (term.Length > 0 && !Matches(c, term)) continue;
+                next.Add(new("chapter/" + c.Id, "chapter", c.Title, "", [c.Id], c));
             }
 
-            foreach (var chapter in all.Where(x => SeriesName(x).Length == 0)
-                         .OrderBy(x => x.Title, StringComparer.CurrentCulture))
-                AppendChapter(next, chapter, 0, search, Searching(chapter.Label) || Searching(ChapterNum(chapter)));
-
+            var currentKey = SelectedCatalogRow?.Key;
             CatalogRows.Clear();
             foreach (var row in next) CatalogRows.Add(row);
-            OnPropertyChanged(nameof(VisibleLines));
+            // Preserve the selected series across search updates without an accidental reload.
+            var restored = next.FirstOrDefault(r => r.Key == currentKey);
+            if (!ReferenceEquals(SelectedCatalogRow, restored))
+                SelectedCatalogRow = restored;
         }
         finally { _rebuildingCatalog = false; }
     }
 
-    private bool LoadedTaskMatchesSearch() =>
-        _pair is not null && _pair.Chs.Stories.Any(story =>
-            story.Title?.Contains(ChapterSearch.Trim(), StringComparison.OrdinalIgnoreCase) == true ||
-            story.Tasks.Any(task => task.Title?.Contains(ChapterSearch.Trim(), StringComparison.OrdinalIgnoreCase) == true));
-
-    private void AppendChapter(List<QuestVoiceCatalogRow> rows, YattaChapter chapter, int depth,
-        string search, bool ancestorMatches)
-    {
-        var selected = SelectedChapter?.Id == chapter.Id && _pair is not null;
-        var taskMatch = selected && LoadedTaskMatchesSearch();
-        if (search.Length > 0 && !ancestorMatches && !taskMatch) return;
-        var key = "chapter/" + chapter.Id;
-        var canExpand = selected && _pair!.Chs.Stories.Count > 0;
-        var open = canExpand && (_expandedCatalog.Contains(key) || search.Length > 0);
-        var number = ChapterNum(chapter);
-        rows.Add(new(key, "chapter", chapter.Title, number.Length > 0 ? number : "点击加载双语任务",
-            depth, chapter, CanExpand: canExpand, Expanded: open));
-        if (!open) return;
-        foreach (var story in _pair!.Chs.Stories)
-        {
-            var storyKey = key + "/story/" + story.StoryId;
-            var storyMatch = story.Title?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
-            var matchingTasks = story.Tasks.Where(t => t.Title?.Contains(search, StringComparison.OrdinalIgnoreCase) == true).ToArray();
-            if (search.Length > 0 && !ancestorMatches && !storyMatch && matchingTasks.Length == 0) continue;
-            var storyOpen = _expandedCatalog.Contains(storyKey) || search.Length > 0;
-            rows.Add(new(storyKey, "story", story.Title ?? "未命名主任务",
-                story.Tasks.Count + " 个子任务", depth + 1, chapter, story.StoryId,
-                CanExpand: story.Tasks.Count > 0, Expanded: storyOpen));
-            if (!storyOpen) continue;
-            foreach (var task in story.Tasks)
-            {
-                if (search.Length > 0 && !ancestorMatches && !storyMatch &&
-                    task.Title?.Contains(search, StringComparison.OrdinalIgnoreCase) != true) continue;
-                rows.Add(new(storyKey + "/task/" + task.TaskId, "task",
-                    task.Title ?? "未命名子任务", "选中后聚焦该子任务的台词",
-                    depth + 2, chapter, story.StoryId, task.TaskId));
-            }
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleCatalogRow(QuestVoiceCatalogRow? row)
-    {
-        if (row is not { CanExpand: true }) return;
-        if (!_expandedCatalog.Add(row.Key)) _expandedCatalog.Remove(row.Key);
-        RefreshCatalogRows();
-    }
-
     partial void OnSelectedCatalogRowChanged(QuestVoiceCatalogRow? row)
     {
-        if (_rebuildingCatalog || row is null || IsGenerating) return;
-        // 组标题仅用于导航；展开动作统一由 [+] 按钮触发，防止点击按钮时与选中事件双重切换。
-        if (row.Kind == "series") return;
-
-        if (row.Chapter is not { } chapter) return;
-        if (SelectedChapter?.Id != chapter.Id)
+        if (_rebuildingCatalog || _selectingInternally || row is null || IsGenerating) return;
+        if (row.ChapterIds.Count == 0 || row.ChapterIds.Count > 100)
         {
-            ActiveStoryId = row.StoryId ?? "";
-            ActiveTaskId = row.TaskId ?? "";
-            SelectedChapter = Chapters.FirstOrDefault(c => c.Id == chapter.Id) ?? chapter;
+            ChapterStatus = "系列章节数无效（最多一次加载 100 章）。";
+            return;
         }
-        else
+        var chapters = row.ChapterIds.Select(id => Chapters.FirstOrDefault(c => c.Id == id)).ToArray();
+        if (chapters.Any(c => c is null))
         {
-            ActiveStoryId = row.StoryId ?? "";
-            ActiveTaskId = row.TaskId ?? "";
-            UpdateCurrentScope();
+            ChapterStatus = "目录已更新，章节不存在，请刷新目录重试。";
+            return;
         }
+        _config.SelectedChapterIds = row.ChapterIds.ToArray();
+        _config.SelectedChapterId = row.ChapterIds[0]; // legacy single-chapter fallback
+        _selectingInternally = true;
+        try { SelectedChapter = chapters[0]; }
+        finally { _selectingInternally = false; }
+        ActiveSelectionLabel = row.Title + (row.Kind == "series" ? " · 全系列" : " · 全章节");
+        _ = LoadSelectionAsync(chapters.Select(c => c!).ToArray(), row.Title);
     }
 
-    partial void OnActiveTaskIdChanged(string value) => UpdateCurrentScope();
-    partial void OnActiveStoryIdChanged(string value) => UpdateCurrentScope();
-
+    /// <summary>Retry the same whole-series selection after a transient Yatta failure; never accept a partial subset.</summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task ReloadSelectedSelectionAsync()
+    {
+        if (IsGenerating || SelectedCatalogRow is not { } row) return;
+        var chapters = row.ChapterIds.Select(id => Chapters.FirstOrDefault(c => c.Id == id)).ToArray();
+        if (chapters.Any(c => c is null))
+        {
+            ChapterStatus = "无法重试：章节目录已变化，请刷新目录。";
+            return;
+        }
+        await LoadSelectionAsync(chapters.Select(c => c!).ToArray(), row.Title);
+    }
     private void UpdateCurrentScope()
     {
-        ActiveSelectionLabel = SelectedChapter?.Title is { } title
-            ? title + (ActiveTaskId.Length > 0 ? " · 当前子任务" : ActiveStoryId.Length > 0 ? " · 当前主任务" : " · 全章节")
-            : "请选择左侧的章节";
-        TaskFilterStatus = ActiveTaskId.Length > 0 ? $"已聚焦子任务 · {VisibleLines.Count()} 条台词"
-            : ActiveStoryId.Length > 0 ? $"已聚焦主任务 · {VisibleLines.Count()} 条台词"
-            : $"当前章节 · {Lines.Count} 条台词";
+        if (SelectedCatalogRow is { } selection)
+            ActiveSelectionLabel = selection.Title +
+                (selection.Kind == "series" ? " · 全系列" : " · 全章节");
+        TaskFilterStatus = $"已载入 {_loadedPairs.Count} 章 · {Lines.Count} 条对白 · 不需展开任务";
         OnPropertyChanged(nameof(VisibleLines));
     }
 
+    /// <summary>Restore a whole series when legacy settings only named its first chapter.</summary>
     private void OnCatalogLoaded()
     {
-        _expandedCatalog.Clear();
-        if (SelectedChapter is not null)
-        {
-            var series = SeriesName(SelectedChapter);
-            if (series.Length > 0) _expandedCatalog.Add("series/" + series);
-        }
         RefreshCatalogRows();
-    }
-
-    private void OnChapterContentLoaded()
-    {
-        if (SelectedChapter is { } chapter)
-        {
-            var series = SeriesName(chapter);
-            if (series.Length > 0) _expandedCatalog.Add("series/" + series);
-            _expandedCatalog.Add("chapter/" + chapter.Id);
-        }
-        RefreshCatalogRows();
-        UpdateCurrentScope();
+        var saved = _config.SelectedChapterIds is { Length: > 0 }
+            ? _config.SelectedChapterIds
+            : string.IsNullOrWhiteSpace(_config.SelectedChapterId) ? [] : [_config.SelectedChapterId];
+        if (saved.Length == 0) return;
+        var row = CatalogRows.FirstOrDefault(r => r.ChapterIds.SequenceEqual(saved, StringComparer.Ordinal))
+            ?? CatalogRows.FirstOrDefault(r => r.Kind == "series" && r.ChapterIds.Contains(saved[0]))
+            ?? CatalogRows.FirstOrDefault(r => r.ChapterIds.Count == 1 && r.ChapterIds[0] == saved[0]);
+        if (row is not null) SelectedCatalogRow = row;
     }
 }

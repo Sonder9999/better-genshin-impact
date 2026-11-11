@@ -75,46 +75,60 @@ public sealed class QuestVoiceScriptMapper
     }
 
     /// <summary>用已严格校验的 CHS/JP 配对建立当前会话的只读映射，便于离线验证。</summary>
-    public static QuestVoiceScriptMapper FromMapping(DialogueLanguageMap mapping, string nickname, bool femaleTraveler)
+    /// <summary>Single-chapter compatibility for existing callers and tests.</summary>
+    public static QuestVoiceScriptMapper FromMapping(DialogueLanguageMap mapping,
+        string nickname, bool femaleTraveler) =>
+        FromMappings([mapping], nickname, femaleTraveler);
+
+    /// <summary>All selected chapters share one strict uniqueness map, so repeated lines across chapters are never guessed.</summary>
+    public static QuestVoiceScriptMapper FromMappings(IEnumerable<DialogueLanguageMap> mappings,
+        string nickname, bool femaleTraveler)
     {
         var context = new QuestTextContext(nickname,
             femaleTraveler ? TravelerGender.Female : TravelerGender.Male);
         string Render(QuestNode? node) => node?.Texts.FirstOrDefault()?.Template.Render(context)?.Trim() ?? "";
-        var rows = mapping.Entries
+        var rows = mappings.SelectMany(mapping => mapping.Entries)
             .Where(row => row.Status == MappingStatus.Matched &&
                 row.Chs is { Type: "SingleDialog" } && row.Jp is { Type: "SingleDialog" })
             .Select(row => new ScriptRow(row.Chs!.Key, row.Chs.Role, Render(row.Chs), Render(row.Jp)))
             .Where(row => !string.IsNullOrWhiteSpace(row.Chinese) && !string.IsNullOrWhiteSpace(row.Target));
         return new QuestVoiceScriptMapper(rows, "jpn");
     }
-
     /// <summary>从 Yatta 缓存加载当前选中章节，超时不阻止实时 P0 启动，失败退回原文本合成。</summary>
     public static async Task<QuestVoiceScriptMapper?> TryLoadAsync(
         QuestVoiceConfig config, string programDirectory, CancellationToken token)
     {
-        if (!config.ScriptLanguageRoutingEnabled || config.SpeechLanguage != "jpn" ||
-            string.IsNullOrWhiteSpace(config.SelectedChapterId)) return null;
+        if (!config.ScriptLanguageRoutingEnabled || config.SpeechLanguage != "jpn") return null;
+        var selected = config.SelectedChapterIds is { Length: > 0 }
+            ? config.SelectedChapterIds
+            : string.IsNullOrWhiteSpace(config.SelectedChapterId) ? [] : [config.SelectedChapterId];
+        if (selected.Length == 0 || selected.Length > 100) return null;
+        var ids = selected.Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal).ToArray();
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Min(90, 10 + ids.Length * 8)));
         try
         {
             var source = new YattaQuestDataSource();
             var store = new QuestJSONStore(System.IO.Path.Combine(programDirectory, "User", "QuestVoice"), "cache/quests");
             var loader = new QuestDataLoader(source, Http, store);
-            var mapping = await QuestLanguagePairLoader.LoadAsync(loader, config.SelectedChapterId,
-                cancellationToken: timeout.Token).ConfigureAwait(false);
-            var matcher = FromMapping(mapping, config.TravelerNickname, config.FemaleTraveler);
-            Log.Information("QuestVoice Yatta CHS→JP script ready chapter={Chapter} lines={Count}",
-                config.SelectedChapterId, matcher.SpeakableLines);
+            var mappings = new List<DialogueLanguageMap>();
+            foreach (var id in ids)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                mappings.Add(await QuestLanguagePairLoader.LoadAsync(loader, id,
+                    cancellationToken: timeout.Token).ConfigureAwait(false));
+            }
+            var matcher = FromMappings(mappings, config.TravelerNickname, config.FemaleTraveler);
+            Log.Information("QuestVoice Yatta CHS→JP script ready chapters={Chapters} lines={Count}",
+                ids.Length, matcher.SpeakableLines);
             return matcher.SpeakableLines == 0 ? null : matcher;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
-            Log.Warning(error, "QuestVoice Yatta script route unavailable chapter={Chapter}; P0 falls back to original text",
-                config.SelectedChapterId);
+            Log.Warning(error, "QuestVoice Yatta series route unavailable; P0 falls back to original text");
             return null;
-        }
-    }
+        }    }
 }
