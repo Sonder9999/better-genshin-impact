@@ -63,9 +63,23 @@
       <RowDefinition Height="*" />
      </Grid.RowDefinitions>
      <ui:TextBlock Grid.Row="0" Text="原神角色与识别名称" FontWeight="SemiBold" Margin="0,0,0,8" />
-     <ui:TextBox Grid.Row="1" PlaceholderText="搜索角色、别名或纠错"
-                 Text="{Binding SpeakerSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,0,0,8" />
+     <StackPanel Grid.Row="1" Margin="0,0,0,8">
+         <ui:TextBox PlaceholderText="搜索角色、别名或纠错"
+                     Text="{Binding SpeakerSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,6" />
+         <CheckBox Content="仅显示当前剧情角色"
+                   IsChecked="{Binding ShowCurrentStoryOnly, Mode=TwoWay}" Margin="0,0,0,6" />
+         <ui:TextBlock Text="{Binding CurrentStorySummary, Mode=OneWay}"
+                       TextTrimming="CharacterEllipsis" Margin="0,0,0,6"
+                       ToolTip="{Binding CurrentStorySummary, Mode=OneWay}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+         <WrapPanel>
+             <ui:Button Content="补齐剧情角色" Margin="0,0,6,4"
+                        Command="{Binding AddMissingStorySpeakersCommand, Mode=OneWay}" />
+             <ui:Button Content="按名称匹配声线" Margin="0,0,6,4"
+                        Command="{Binding AutoBindCurrentStoryVoicesCommand, Mode=OneWay}" />
+         </WrapPanel>
+     </StackPanel>
      <ListBox Grid.Row="2" ItemsSource="{Binding FilteredSpeakers, Mode=OneWay}"
               SelectedItem="{Binding SelectedSpeaker, Mode=TwoWay}"
               DisplayMemberPath="DisplayName" ScrollViewer.VerticalScrollBarVisibility="Auto"

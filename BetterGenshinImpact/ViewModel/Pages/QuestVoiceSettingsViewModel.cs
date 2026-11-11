@@ -68,7 +68,7 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
         _status = service.Status;
         service.Changed += OnServiceChanged;
         Gpt = new GptSovitsSettingsViewModel(this, factory, service);
-        Story = new QuestVoiceStoryWorkspace(factory, Config, service);
+        Story = new QuestVoiceStoryWorkspace(factory, Config, service) { Management = Management };
         EngineSettingsViewModel[] others =
         [
             new VoicevoxSettingsViewModel(this, factory, service),

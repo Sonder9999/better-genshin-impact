@@ -84,12 +84,8 @@ public sealed class QuestVoicePreSynthesisService(
         var frozenConfig = JsonConvert.DeserializeObject<QuestVoiceConfig>(JsonConvert.SerializeObject(config))
             ?? throw new InvalidOperationException("无法冻结本次语音配置。");
         var runtimeFactory = new QuestVoiceSessionFactory(frozenConfig, factory.ProgramDirectory);
-        using var pauseRealtime = liveService.BeginSettingsEdit();
-        // 编辑租约会异步停掉实时会话；等真正释放后才允许 P1 切权，避免双实例争抢同一后端。
-        for (var retry = 0; retry < 80 && (liveService.Status.IsRunning || liveService.Status.IsBusy); retry++)
-            await Task.Delay(150, cancellationToken);
-        if (liveService.Status.IsRunning || liveService.Status.IsBusy)
-            throw new InvalidOperationException("实时配音尚未停止，暂不开始 P1 合成以避免同时切换声线权重。");
+        // P1 不再抢占 P0：仅在每条实际需要网络合成的请求期间申请暂停租约。
+        // P0 恢复请求在当前 HTTP 安全排空后可重新启动，不必等待整个章节生成完毕。
         await runtimeFactory.EnsureResourcesAsync(cancellationToken);
         RoutingCatalog? catalog = null;
         if (frozenConfig.RoutingEnabled)
@@ -132,16 +128,8 @@ public sealed class QuestVoicePreSynthesisService(
                     [new ReferenceAudio(settings.Voice.ReferenceAudioPath, settings.Voice.PromptText)],
                     settings.Provider);
 
-                var fingerprint = string.Join("\n", new[]
-                {
-                    speechLanguage, line.Speaker, line.Text, settings.TtsServiceUrl.AbsoluteUri,
-                    settings.Provider?.ProviderId ?? "", settings.Provider?.InstanceId ?? "",
-                    settings.Provider?.VoiceId ?? "", settings.Extra?.Model ?? "",
-                    settings.Extra?.Language ?? "", settings.Extra?.Format ?? "",
-                    binding.Name, VersionOf(binding.GptWeightsPath), VersionOf(binding.SovitsWeightsPath),
-                    VersionOf(settings.Voice.ReferenceAudioPath), settings.Voice.PromptText
-                });
-                var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint))).ToLowerInvariant();
+                var hash = QuestVoiceCacheIdentity.ComputeHash(settings, binding,
+                    line.Speaker, line.Text, speechLanguage);
                 var wavPath = Path.Combine(CacheDirectory, hash + ".wav");
                 if (await IsValidCachedWavAsync(wavPath, cancellationToken))
                 {
@@ -152,20 +140,43 @@ public sealed class QuestVoicePreSynthesisService(
                 }
 
                 progress.Report(new(line.Key, "正在合成", completed, lines.Count, hits, failed));
-                // 不强制终止在途 GPT HTTP 请求，以免服务权重和排空状态不明。
-                var result = await provider.SynthesizeAsync(settings,
-                    new TtsRequest(line.Text, binding), null, CancellationToken.None);
-                cancellationToken.ThrowIfCancellationRequested();
-                // 非 GPT 引擎可能返回 MP3，沿用 BetterGI 的受限解码器输出一致的 PCM16 WAV 缓存。
-                var audio = new TtsAudioDecoder().Decode(result.Wav, result.SourceEncoding, cancellationToken);
+                byte[] wavBytes;
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await waitWhilePaused(cancellationToken);
+                    if (liveService.IsRealtimeRequested)
+                    {
+                        progress.Report(new(line.Key, "P0 实时配音优先，P1 等待空闲", completed, lines.Count, hits, failed));
+                        await Task.Delay(400, cancellationToken);
+                        continue;
+                    }
+
+                    // 抢占只发生在请求边界，绝不终止在途 GPT-SoVITS HTTP/切权操作。
+                    using (await liveService.BeginBackgroundSynthesisRequestAsync(cancellationToken))
+                    {
+                        for (var retry = 0; retry < 80 && (liveService.Status.IsRunning || liveService.Status.IsBusy); retry++)
+                            await Task.Delay(150, cancellationToken);
+                        if (liveService.IsRealtimeRequested) continue;
+                        if (liveService.Status.IsRunning || liveService.Status.IsBusy)
+                            throw new InvalidOperationException("P0 仍在排空，已阻止 P1 同时切换声线权重。");
+
+                        // 无论用户何时点取消，已发出的请求必须排空，成功完成的这条仍写入缓存。
+                        var result = await provider.SynthesizeAsync(settings,
+                            new TtsRequest(line.Text, binding), null, CancellationToken.None);
+                        wavBytes = new TtsAudioDecoder().Decode(result.Wav, result.SourceEncoding, CancellationToken.None).Bytes;
+                    }
+                    break;
+                }
+
                 var temporary = wavPath + "." + Guid.NewGuid().ToString("N") + ".partial";
                 try
                 {
-                    await File.WriteAllBytesAsync(temporary, audio.Bytes, cancellationToken);
+                    await File.WriteAllBytesAsync(temporary, wavBytes, CancellationToken.None);
                     File.Move(temporary, wavPath, true);
                 }
                 finally { if (File.Exists(temporary)) File.Delete(temporary); }
-                await RegisterCachedWAVAsync(cacheIndex, line.Key, speechLanguage, wavPath, cancellationToken);
+                await RegisterCachedWAVAsync(cacheIndex, line.Key, speechLanguage, wavPath, CancellationToken.None);
                 completed++; failuresInARow = 0;
                 progress.Report(new(line.Key, "已生成", completed, lines.Count, hits, failed));
             }

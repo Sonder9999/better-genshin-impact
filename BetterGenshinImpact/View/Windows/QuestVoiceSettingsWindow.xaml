@@ -157,6 +157,15 @@
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource QuestVoiceSectionStyle}">
+                            <StackPanel>
+                                <ui:ToggleSwitch Content="启用选中剧情的中日原文精确路由"
+                                                 IsChecked="{Binding Config.ScriptLanguageRoutingEnabled, Mode=TwoWay}" />
+                                <ui:TextBlock Text="目标为 JP 且已选定 Yatta 剧情时生效：只有当前章节内唯一、可靠的中文 OCR 台词才替换为对应日语原文；短句、重复句和结构节点不猜测，仍按原实时流程处理。启用后在下次实时会话启动时加载。"
+                                              Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                              TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource QuestVoiceSectionStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

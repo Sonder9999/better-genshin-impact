@@ -99,8 +99,9 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
         [new(MissingVoicePolicy.Fallback, "改用默认 NPC 声线"), new(MissingVoicePolicy.Fail, "报错")];
     /// <summary>搜索同时匹配身份、正式名称、别名和 OCR 纠错名。</summary>
     public IEnumerable<QuestVoiceManagementSpeaker> FilteredSpeakers => Speakers.Where(x =>
-        string.IsNullOrWhiteSpace(SpeakerSearch) || string.Join("\n", x.Id, x.Names, x.Aliases, x.Corrections)
-            .Contains(SpeakerSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+        (!ShowCurrentStoryOnly || IsStorySpeaker(x)) &&
+        (string.IsNullOrWhiteSpace(SpeakerSearch) || string.Join("\n", x.Id, x.Names, x.Aliases, x.Corrections)
+            .Contains(SpeakerSearch.Trim(), StringComparison.OrdinalIgnoreCase)));
     /// <summary>运行、试听和编辑器 IO 任一繁忙都冻结写入。</summary>
     public bool IsEditingAllowed => _owner.IsConfigEditable && !IsWorking;
     /// <summary>有实际草稿才允许编辑内容。</summary>
@@ -376,6 +377,7 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
     {
         if (!_loading) MarkDraftChanged();
         OnPropertyChanged(nameof(TravelerVoiceId));
+        NotifyStorySpeakersChanged();
     }
     /// <summary>Provider 改动刷新独立预设，其他字段也保持未保存提示。</summary>
     private void OnProfileChanged(object? sender, PropertyChangedEventArgs e)
@@ -384,7 +386,7 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
         NotifyVoiceChoices();
     }
     /// <summary>通知计算列表，避免创建第二份会丢编辑的角色集合。</summary>
-    private void NotifyLists() { NotifyVoiceChoices(); OnPropertyChanged(nameof(FilteredSpeakers)); }
+    private void NotifyLists() { NotifyVoiceChoices(); NotifyStorySpeakersChanged(); }
     /// <summary>新行使用不会冲突的短身份。</summary>
     private static string UniqueId(string prefix, IEnumerable<string> existing)
     {

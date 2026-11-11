@@ -63,6 +63,8 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
 
     /// <summary>单一全局配置，同步角色与引擎页面。</summary>
     public QuestVoiceConfig Config => _config;
+    /// <summary>剧情页与角色管理页共享同一编辑草稿和自动保存，不复制声线档案。</summary>
+    public QuestVoiceManagementViewModel? Management { get; set; }
     /// <summary>全局章节目录。</summary>
     public ObservableCollection<YattaChapter> Chapters { get; } = [];
     /// <summary>当前章节的中日双语节点，列表容器负责虚拟化。</summary>
@@ -127,7 +129,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         _config = config;
         _preSynthesis = new(factory, config, live);
         _catalogPath = Path.Combine(factory.ProgramDirectory, "User", "QuestVoice", "cache", "catalog-chs.json");
-        _loader = new QuestDataLoader(_source, Http, new QuestJSONStore(factory.ProgramDirectory, "User/QuestVoice/cache/quests"));
+        _loader = new QuestDataLoader(_source, Http, new QuestJSONStore(Path.Combine(factory.ProgramDirectory, "User", "QuestVoice"), "cache/quests"));
         config.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(QuestVoiceConfig.SpeechLanguage) or
@@ -172,6 +174,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     public async Task EnsureLoadedAsync()
     {
         if (!_catalogLoaded) await LoadCatalogAsync(false);
+        if (Management is not null) await Management.EnsureLoadedAsync();
     }
 
     /// <summary>手动强制向 Yatta 请求最新章节目录。</summary>
@@ -234,6 +237,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         ChapterStatus = "正在加载 CHS / JP 双语台词…";
         Lines.Clear();
         _pair = null;
+        Management?.SetCurrentStorySpeakers([], _config.SpeechLanguage);
         try
         {
             var pair = await QuestLanguagePairLoader.LoadAsync(_loader, chapter.Id, cancellationToken: cts.Token);
@@ -262,6 +266,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             Lines.Add(new(mapping, cn.Role, Render(cn), Render(mapping.Jp)));
         }
         SelectedLine = Lines.FirstOrDefault(x => x.Key == selectedKey);
+        Management?.SetCurrentStorySpeakers(Lines.Select(line => line.Speaker), _config.SpeechLanguage);
     }
 
     /// <summary>以全局章节为唯一来源生成所有已确认的双语对白。</summary>
