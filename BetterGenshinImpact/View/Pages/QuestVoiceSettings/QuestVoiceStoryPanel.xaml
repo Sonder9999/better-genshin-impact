@@ -24,13 +24,15 @@
         </Style>
     </UserControl.Resources>
     <TabControl BorderThickness="0" Margin="0,4,0,0">
-        <!-- 选定一次全局剧情，预合成只使用当前章节和角色映射。 -->
-        <TabItem Header="剧情选择与预合成">
+        <!-- 全局剧情仅在这里选择；右栏配置当前出场角色。台词节点浏览独立于此页。 -->
+        <TabItem Header="1. 剧情选择与声线">
             <Grid Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="3*" MinWidth="194" />
-                    <ColumnDefinition Width="5*" MinWidth="300" />
+                    <ColumnDefinition Width="1.05*" MinWidth="255" />
+                    <ColumnDefinition Width="1.1*" MinWidth="320" />
                 </Grid.ColumnDefinitions>
+
+                <!-- 与 QuestVoice QuestSelectionPanel 一致的系列/章节/任务分级浏览，使用 BetterGI 主题。 -->
                 <Border Grid.Column="0" Style="{StaticResource QuestStorySection}" Margin="0,0,10,0">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -38,177 +40,191 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <ui:TextBlock Grid.Row="0" FontWeight="SemiBold" Text="全局剧情章节" Margin="0,0,0,8" />
-                        <ui:TextBox Grid.Row="1" PlaceholderText="搜索章节名或 ID"
-                                    Text="{Binding ChapterSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    IsEnabled="{Binding IsEditable, Mode=OneWay}" Margin="0,0,0,8" />
-                        <Grid Grid.Row="2" Margin="0,0,0,8">
+                        <StackPanel Grid.Row="0" Margin="0,0,0,9">
+                            <ui:TextBlock FontWeight="SemiBold" Text="选择剧情与任务" FontSize="15" />
+                            <ui:TextBlock Text="使用 + 展开系列，点击章节加载中日剧情；加载后可继续展开主任务和子任务。"
+                                          TextWrapping="Wrap" Margin="0,5,0,0"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Grid Grid.Row="1" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ui:TextBlock Grid.Column="0" Text="{Binding CatalogStatus, Mode=OneWay}"
-                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                          TextTrimming="CharacterEllipsis" ToolTip="{Binding CatalogStatus, Mode=OneWay}"
-                                          VerticalAlignment="Center" />
-                            <ui:Button Grid.Column="1" Content="刷新" Margin="8,0,0,0"
+                            <ui:TextBox Grid.Column="0" PlaceholderText="搜索系列、章节、任务名称或 ID"
+                                        Text="{Binding ChapterSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        IsEnabled="{Binding IsEditable, Mode=OneWay}" />
+                            <ui:Button Grid.Column="1" Content="刷新目录" Margin="8,0,0,0"
                                        Command="{Binding RefreshCatalogCommand, Mode=OneWay}"
                                        IsEnabled="{Binding IsEditable, Mode=OneWay}" />
                         </Grid>
-                        <ListBox Grid.Row="3" ItemsSource="{Binding FilteredChapters, Mode=OneWay}"
-                                 SelectedItem="{Binding SelectedChapter, Mode=TwoWay}"
+                        <ui:TextBlock Grid.Row="2" Text="{Binding CatalogStatus, Mode=OneWay}"
+                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding CatalogStatus, Mode=OneWay}"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8" />
+                        <ListBox Grid.Row="3" ItemsSource="{Binding CatalogRows, Mode=OneWay}"
+                                 SelectedItem="{Binding SelectedCatalogRow, Mode=TwoWay}"
+                                 IsEnabled="{Binding IsEditable, Mode=OneWay}"
+                                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                 VirtualizingStackPanel.IsVirtualizing="True"
-                                 VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                 IsEnabled="{Binding IsEditable, Mode=OneWay}">
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Padding" Value="2,3" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <ui:TextBlock Text="{Binding Label, Mode=OneWay}" TextTrimming="CharacterEllipsis"
-                                                  ToolTip="{Binding Label, Mode=OneWay}" />
+                                    <Grid Margin="{Binding Indent}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="{Binding ExpandMarker}"
+                                                IsEnabled="{Binding CanExpand}" Width="26" MinHeight="24" Padding="0"
+                                                Command="{Binding DataContext.ToggleCatalogRowCommand, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}"
+                                                CommandParameter="{Binding}" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <DockPanel LastChildFill="True">
+                                                <ui:TextBlock DockPanel.Dock="Left" Text="{Binding DisplayKind, Mode=OneWay}"
+                                                              Foreground="{DynamicResource SystemAccentColorPrimaryBrush}"
+                                                              Margin="0,0,7,0" FontWeight="SemiBold" />
+                                                <ui:TextBlock Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold"
+                                                              TextTrimming="CharacterEllipsis" ToolTip="{Binding Title, Mode=OneWay}" />
+                                            </DockPanel>
+                                            <ui:TextBlock Text="{Binding Detail, Mode=OneWay}" Margin="0,2,0,0"
+                                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                          TextTrimming="CharacterEllipsis" ToolTip="{Binding Detail, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        <StackPanel Grid.Row="4" Margin="0,8,0,0">
+                            <ui:TextBlock Text="{Binding ChapterStatus, Mode=OneWay}" TextTrimming="CharacterEllipsis"
+                                          ToolTip="{Binding ChapterStatus, Mode=OneWay}" />
+                            <ui:TextBlock Text="{Binding TaskFilterStatus, Mode=OneWay}"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
                     </Grid>
                 </Border>
+
+                <!-- 右侧只管理当前出场角色的声线与配音范围，不再复制台词列表或节点聚焦。 -->
                 <Grid Grid.Column="1">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Style="{StaticResource QuestStorySection}" Margin="0,0,0,10">
                         <StackPanel>
-                            <ui:TextBlock Text="识别原文 CHS → 配音原文" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <ui:TextBlock Text="当前剧情与双语原文" FontSize="15" FontWeight="SemiBold" />
+                            <ui:TextBlock Text="{Binding ActiveSelectionLabel, Mode=OneWay}"
+                                          Foreground="{DynamicResource SystemAccentColorPrimaryBrush}"
+                                          TextTrimming="CharacterEllipsis" Margin="0,6,0,8" />
                             <WrapPanel IsEnabled="{Binding IsEditable, Mode=OneWay}">
-                                <StackPanel Width="166" Margin="0,0,10,8">
+                                <StackPanel Width="154" Margin="0,0,10,8">
                                     <ui:TextBlock Text="目标配音语言" Margin="0,0,0,4" />
                                     <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Config.SpeechLanguage, Mode=TwoWay}">
-                                        <ComboBoxItem Tag="jpn" Content="日语 (JP)" />
-                                        <ComboBoxItem Tag="chs" Content="中文 (CHS)" />
+                                        <ComboBoxItem Tag="jpn" Content="日语（JP）" />
+                                        <ComboBoxItem Tag="chs" Content="中文（CHS）" />
                                     </ComboBox>
                                 </StackPanel>
-                                <StackPanel Width="174" Margin="0,0,10,8">
-                                    <ui:TextBlock Text="旅行者昵称（可选）" Margin="0,0,0,4" />
+                                <StackPanel Width="170" Margin="0,0,10,8">
+                                    <ui:TextBlock Text="旅行者游戏昵称" Margin="0,0,0,4" />
                                     <ui:TextBox Text="{Binding Config.TravelerNickname, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                PlaceholderText="默认游戏昵称" />
+                                                PlaceholderText="未指定" />
                                 </StackPanel>
-                                <ui:ToggleSwitch Margin="0,16,0,0" Content="旅行者：荧"
+                                <ui:ToggleSwitch Content="荧" Margin="0,18,0,0"
                                                  IsChecked="{Binding Config.FemaleTraveler, Mode=TwoWay}" />
                             </WrapPanel>
-                            <ui:TextBlock Text="声线使用「角色映射」中的绑定；未配对或缺失的台词不会被翻译后冒充原文。"
+                            <ui:ToggleSwitch Content="启用中日原文精确路由（实时 P0）"
+                                             IsEnabled="{Binding IsEditable, Mode=OneWay}"
+                                             IsChecked="{Binding Config.ScriptLanguageRoutingEnabled, Mode=TwoWay}" />
+                            <ui:TextBlock Text="仅匹配当前章节中唯一、可靠的双语节点；不翻译或猜测短句，台词浏览在第二个标签。"
                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                          TextWrapping="Wrap" />
-                            <Expander Header="{Binding Management.CurrentStorySummary, Mode=OneWay}" Margin="0,8,0,0">
-                                <StackPanel Margin="0,6,0,0">
-                                    <WrapPanel Margin="0,0,0,6">
-                                        <ui:Button Content="为未建档角色建档" Margin="0,0,8,4"
-                                                   Command="{Binding Management.AddMissingStorySpeakersCommand, Mode=OneWay}" />
-                                        <ui:Button Content="按名称精确匹配声线" Margin="0,0,8,4"
-                                                   Command="{Binding Management.AutoBindCurrentStoryVoicesCommand, Mode=OneWay}" />
-                                    </WrapPanel>
-                                    <ui:TextBlock Text="{Binding Management.EditStatus, Mode=OneWay}"
-                                                  TextTrimming="CharacterEllipsis" Margin="0,0,0,6"
-                                                  ToolTip="{Binding Management.EditStatus, Mode=OneWay}"
-                                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    <ListBox ItemsSource="{Binding Management.CurrentStorySpeakers, Mode=OneWay}"
-                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                             MaxHeight="160" VirtualizingStackPanel.IsVirtualizing="True"
-                                             VirtualizingStackPanel.VirtualizationMode="Recycling">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,2">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="100" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <ui:TextBlock Grid.Column="0" Text="{Binding DisplayName, Mode=OneWay}"
-                                                                  TextTrimming="CharacterEllipsis"
-                                                                  ToolTip="{Binding DisplayName, Mode=OneWay}"
-                                                                  VerticalAlignment="Center" />
-                                                    <pages:QuestVoiceVoiceSelector Grid.Column="1"
-                                                          ItemsSource="{Binding DataContext.Management.VoiceChoices, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}"
-                                                          SelectedVoiceId="{Binding VoiceId, Mode=TwoWay}"
-                                                          IsEnabled="{Binding DataContext.Management.CanEditDraft, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
-                                </StackPanel>
-                            </Expander>
+                                          TextWrapping="Wrap" Margin="0,5,0,0" />
                         </StackPanel>
                     </Border>
-                    <ui:TextBlock Grid.Row="1" Text="{Binding ChapterStatus, Mode=OneWay}"
-                                  TextTrimming="CharacterEllipsis" ToolTip="{Binding ChapterStatus, Mode=OneWay}"
-                                  Margin="2,0,0,8" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <!-- 使用项目既有虚拟化列表控件，避免额外 DataGrid 主题依赖；宽度可伸缩。 -->
-                    <Grid Grid.Row="2">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" Margin="8,0,12,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="65" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="78" />
-                            </Grid.ColumnDefinitions>
-                            <ui:TextBlock Grid.Column="0" Text="角色" FontWeight="SemiBold" />
-                            <ui:TextBlock Grid.Column="1" Text="中文" FontWeight="SemiBold" />
-                            <ui:TextBlock Grid.Column="2" Text="日文" FontWeight="SemiBold" />
-                            <ui:TextBlock Grid.Column="3" Text="进度" FontWeight="SemiBold" />
+                    <Border Grid.Row="1" Style="{StaticResource QuestStorySection}" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ui:TextBlock Grid.Row="0" Text="当前剧情角色与声线绑定" FontSize="15" FontWeight="SemiBold" />
+                            <ui:TextBlock Grid.Row="1" Text="{Binding Management.CurrentStorySummary, Mode=OneWay}"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,8" />
+                            <WrapPanel Grid.Row="2" Margin="0,0,0,6">
+                                <ui:Button Content="补齐角色档案" Margin="0,0,8,4"
+                                           Command="{Binding Management.AddMissingStorySpeakersCommand, Mode=OneWay}" />
+                                <ui:Button Content="精确匹配声线" Margin="0,0,8,4"
+                                           Command="{Binding Management.AutoBindCurrentStoryVoicesCommand, Mode=OneWay}" />
+                            </WrapPanel>
+                            <ListBox Grid.Row="3" ItemsSource="{Binding Management.CurrentStorySpeakers, Mode=OneWay}"
+                                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        <Setter Property="Padding" Value="5,6" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:TextBlock Grid.Column="0" Text="{Binding DisplayName, Mode=OneWay}"
+                                                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                          ToolTip="{Binding DisplayName, Mode=OneWay}" />
+                                            <pages:QuestVoiceVoiceSelector Grid.Column="1"
+                                                ItemsSource="{Binding DataContext.Management.VoiceChoices, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}"
+                                                SelectedVoiceId="{Binding VoiceId, Mode=TwoWay}"
+                                                IsEnabled="{Binding DataContext.Management.CanEditDraft, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Grid>
-                        <ListBox Grid.Row="1" ItemsSource="{Binding Lines, Mode=OneWay}"
-                                 SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 VirtualizingStackPanel.IsVirtualizing="True"
-                                 VirtualizingStackPanel.VirtualizationMode="Recycling">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid MinHeight="32" Margin="2">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="65" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="78" />
-                                        </Grid.ColumnDefinitions>
-                                        <ui:TextBlock Grid.Column="0" Text="{Binding Speaker, Mode=OneWay}"
-                                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding Speaker, Mode=OneWay}" />
-                                        <ui:TextBlock Grid.Column="1" Text="{Binding Chinese, Mode=OneWay}"
-                                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding Chinese, Mode=OneWay}" />
-                                        <ui:TextBlock Grid.Column="2" Text="{Binding Japanese, Mode=OneWay}"
-                                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding Japanese, Mode=OneWay}" />
-                                        <ui:TextBlock Grid.Column="3" Text="{Binding State, Mode=OneWay}"
-                                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding State, Mode=OneWay}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                    <Border Grid.Row="3" Style="{StaticResource QuestStorySection}" Margin="0,10,0,0">
+                    </Border>
+                    <Border Grid.Row="2" Style="{StaticResource QuestStorySection}">
                         <StackPanel>
-                            <ui:TextBlock Text="{Binding PreSynthesisStatus, Mode=OneWay}" TextTrimming="CharacterEllipsis"
-                                          ToolTip="{Binding PreSynthesisStatus, Mode=OneWay}" />
-                            <ProgressBar Margin="0,8,0,10" Height="5" Minimum="0" Maximum="100"
+                            <ui:TextBlock Text="{Binding PreSynthesisStatus, Mode=OneWay}"
+                                          TextTrimming="CharacterEllipsis" ToolTip="{Binding PreSynthesisStatus, Mode=OneWay}" />
+                            <ProgressBar Height="5" Minimum="0" Maximum="100" Margin="0,8,0,8"
                                          Value="{Binding ProgressPercent, Mode=OneWay}" />
                             <WrapPanel>
-                                <ui:Button Content="生成全部对白" Appearance="Primary"
+                                <ui:Button Content="预合成当前范围" Appearance="Primary" Margin="0,0,8,4"
                                            Command="{Binding StartPreSynthesisCommand, Mode=OneWay}"
-                                           IsEnabled="{Binding IsEditable, Mode=OneWay}" Margin="0,0,8,4" />
-                                <ui:Button Content="暂停" Command="{Binding PausePreSynthesisCommand, Mode=OneWay}"
-                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" Margin="0,0,8,4" />
-                                <ui:Button Content="恢复" Command="{Binding ResumePreSynthesisCommand, Mode=OneWay}"
-                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" Margin="0,0,8,4" />
-                                <ui:Button Content="取消" Command="{Binding StopPreSynthesisCommand, Mode=OneWay}"
-                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" Margin="0,0,8,4" />
+                                           IsEnabled="{Binding IsEditable, Mode=OneWay}" />
+                                <ui:Button Content="暂停" Margin="0,0,8,4"
+                                           Command="{Binding PausePreSynthesisCommand, Mode=OneWay}"
+                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
+                                <ui:Button Content="恢复" Margin="0,0,8,4"
+                                           Command="{Binding ResumePreSynthesisCommand, Mode=OneWay}"
+                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
+                                <ui:Button Content="停止" Margin="0,0,8,4"
+                                           Command="{Binding StopPreSynthesisCommand, Mode=OneWay}"
+                                           IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -230,7 +246,10 @@
                         </Grid.RowDefinitions>
                         <ui:TextBlock Grid.Row="0" Text="{Binding ChapterStatus, Mode=OneWay}" TextWrapping="Wrap"
                                       Margin="0,0,0,8" />
-                        <ListBox Grid.Row="1" ItemsSource="{Binding Lines, Mode=OneWay}"
+                        <ListBox Grid.Row="1" ItemsSource="{Binding VisibleLines, Mode=OneWay}"
+                                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                  SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  VirtualizingStackPanel.IsVirtualizing="True"

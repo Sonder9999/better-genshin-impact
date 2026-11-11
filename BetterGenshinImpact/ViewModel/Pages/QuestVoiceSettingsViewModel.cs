@@ -98,13 +98,13 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
         }));
     }
 
-    /// <summary>切换编辑对象只使旧请求失效；进入 GPT-SoVITS 时选中第一条声线。</summary>
+    /// <summary>切换引擎只切换连接设置；声线库选中项由「角色映射 → 声线注册」独立管理。</summary>
     partial void OnSelectedEngineChanged(QuestVoiceEngineEntry? oldValue, QuestVoiceEngineEntry? newValue)
     {
         OnPropertyChanged(nameof(IsGptSelected));
         (oldValue?.Settings as EngineSettingsViewModel)?.SetActive(false);
         (newValue?.Settings as EngineSettingsViewModel)?.SetActive(true);
-        if (newValue?.Settings is GptSovitsSettingsViewModel) _ = Gpt.SelectFirstProfileAsync();
+        // 不再因查看 GPT 连接设置而重置全局声线编辑器当前选中项。
     }
 
     /// <summary>把正在编辑的引擎设为正式配音使用的默认引擎。</summary>

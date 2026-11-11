@@ -47,6 +47,13 @@
      <local:QuestVoiceVoiceSelector ItemsSource="{Binding VoiceChoices, Mode=OneWay}"
                                     SelectedVoiceId="{Binding SelectedNarratorVoiceId, Mode=TwoWay}"
                                     ToolTip="旁白识别尚未启用；此项设置会被保存" />
+     <ui:TextBlock Text="找不到角色声线时" FontWeight="SemiBold" Margin="0,10,0,5" />
+     <ComboBox ItemsSource="{Binding MissingPolicyChoices, Mode=OneWay}"
+               DisplayMemberPath="Value" SelectedValuePath="Key"
+               SelectedValue="{Binding MissingVoicePolicy, Mode=TwoWay}" />
+     <ui:TextBlock Text="角色未绑定或资源不可用时的兜底规则；普通 NPC 使用默认 NPC 声线。"
+                   TextWrapping="Wrap" Margin="0,5,0,0"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
     </StackPanel>
    </Border>
   </Grid>
@@ -80,11 +87,19 @@
                         Command="{Binding AutoBindCurrentStoryVoicesCommand, Mode=OneWay}" />
          </WrapPanel>
      </StackPanel>
-     <ListBox Grid.Row="2" ItemsSource="{Binding FilteredSpeakers, Mode=OneWay}"
+     <ListBox Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" ItemsSource="{Binding FilteredSpeakers, Mode=OneWay}"
               SelectedItem="{Binding SelectedSpeaker, Mode=TwoWay}"
               DisplayMemberPath="DisplayName" ScrollViewer.VerticalScrollBarVisibility="Auto"
               VirtualizingStackPanel.IsVirtualizing="True"
-              VirtualizingStackPanel.VirtualizationMode="Recycling" />
+              VirtualizingStackPanel.VirtualizationMode="Recycling">
+      <ListBox.ItemContainerStyle>
+       <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="7,9" />
+       </Style>
+      </ListBox.ItemContainerStyle>
+     </ListBox>
     </Grid>
    </Border>
    <Border Grid.Column="1" Style="{StaticResource ManagementSectionStyle}">
