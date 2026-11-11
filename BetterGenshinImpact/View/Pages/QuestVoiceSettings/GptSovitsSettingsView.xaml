@@ -39,8 +39,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox Grid.Column="0" ItemsSource="{Binding GptProfiles, Mode=OneWay}" SelectedItem="{Binding SelectedGptProfile, Mode=TwoWay}"
-                          DisplayMemberPath="Name" IsTextSearchEnabled="True" TextSearch.TextPath="Name" MaxDropDownHeight="320" />
+                <ui:TextBlock Grid.Column="0" Text="{Binding SelectedGptProfile.Name, Mode=OneWay}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding SelectedGptProfile.Name, Mode=OneWay}" />
                 <ui:Button Grid.Column="1" Content="新增" Icon="{ui:SymbolIcon Add24}" Command="{Binding AddGptProfileCommand, Mode=OneWay}" Margin="8,0,0,0" />
                 <ui:Button Grid.Column="2" Content="删除" Icon="{ui:SymbolIcon Delete24}" Command="{Binding DeleteProfileCommand, Mode=OneWay}" Margin="8,0,0,0" />
             </Grid>

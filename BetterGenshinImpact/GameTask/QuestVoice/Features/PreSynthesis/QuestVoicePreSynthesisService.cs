@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
@@ -13,6 +14,7 @@ using BetterGenshinImpact.GameTask.QuestVoice.Core.Tts;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Tts;
 using BetterGenshinImpact.Service;
+using JsonConvert = Newtonsoft.Json.JsonConvert;
 
 namespace BetterGenshinImpact.GameTask.QuestVoice.Features.PreSynthesis;
 
@@ -30,6 +32,45 @@ public sealed class QuestVoicePreSynthesisService(
     /// <summary>缓存始终位于安装目录下的 User 区域。</summary>
     public string CacheDirectory => Path.Combine(factory.ProgramDirectory, "User", "QuestVoice", "cache", "pre-synthesis");
 
+    /// <summary>以全局节点和语言查找上次成功生成并已落盘的音频；禁止使用索引中的绝对路径。</summary>
+    public string? FindCachedWAV(string nodeKey, string language)
+    {
+        var index = ReadIndex();
+        if (!index.TryGetValue(language + "|" + nodeKey, out var fileName) ||
+            fileName != Path.GetFileName(fileName) ||
+            !fileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) return null;
+        var file = Path.Combine(CacheDirectory, fileName);
+        return File.Exists(file) ? file : null;
+    }
+
+    /// <summary>索引仅保存 Hash WAV 文件名，不暴露工作目录以外的路径。</summary>
+    private Dictionary<string, string> ReadIndex()
+    {
+        var path = Path.Combine(CacheDirectory, "line-index.json");
+        try
+        {
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) ?? []
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return []; }
+    }
+
+    /// <summary>完成或命中时原子登记，重启后仍可点播且不会读取半写入索引。</summary>
+    private async Task RegisterCachedWAVAsync(Dictionary<string, string> index,
+        string key, string language, string wavPath, CancellationToken token)
+    {
+        index[language + "|" + key] = Path.GetFileName(wavPath);
+        var path = Path.Combine(CacheDirectory, "line-index.json");
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".partial";
+        try
+        {
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(index), token);
+            File.Move(temporary, path, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
     /// <summary>串行生成当前选中原文，并使用设置编辑租约防止与实时配音竞争服务权重。</summary>
     public async Task<QuestPreSynthesisSummary> GenerateAsync(IReadOnlyList<QuestPreSynthesisLine> lines,
         string speechLanguage, Func<CancellationToken, Task> waitWhilePaused,
@@ -39,15 +80,25 @@ public sealed class QuestVoicePreSynthesisService(
         if (speechLanguage is not ("jpn" or "chs"))
             throw new ArgumentException("仅支持 CHS/JP 剧情原文。", nameof(speechLanguage));
         Directory.CreateDirectory(CacheDirectory);
+        // 配置和权重映射在批次开始时冻结，用户编辑其他 Tab 不改变在途请求的模型/服务。
+        var frozenConfig = JsonConvert.DeserializeObject<QuestVoiceConfig>(JsonConvert.SerializeObject(config))
+            ?? throw new InvalidOperationException("无法冻结本次语音配置。");
+        var runtimeFactory = new QuestVoiceSessionFactory(frozenConfig, factory.ProgramDirectory);
         using var pauseRealtime = liveService.BeginSettingsEdit();
-        await factory.EnsureResourcesAsync(cancellationToken);
+        // 编辑租约会异步停掉实时会话；等真正释放后才允许 P1 切权，避免双实例争抢同一后端。
+        for (var retry = 0; retry < 80 && (liveService.Status.IsRunning || liveService.Status.IsBusy); retry++)
+            await Task.Delay(150, cancellationToken);
+        if (liveService.Status.IsRunning || liveService.Status.IsBusy)
+            throw new InvalidOperationException("实时配音尚未停止，暂不开始 P1 合成以避免同时切换声线权重。");
+        await runtimeFactory.EnsureResourcesAsync(cancellationToken);
         RoutingCatalog? catalog = null;
-        if (config.RoutingEnabled)
-            catalog = (await new SpeakerCatalogLoader().LoadAsync(factory.RoutingCatalogPath,
-                cancellationToken, factory.RoutingServerSidePaths)).Catalog;
+        if (frozenConfig.RoutingEnabled)
+            catalog = (await new SpeakerCatalogLoader().LoadAsync(runtimeFactory.RoutingCatalogPath,
+                cancellationToken, runtimeFactory.RoutingServerSidePaths)).Catalog;
 
-        using var provider = factory.CreateRoutingProvider();
+        using var provider = runtimeFactory.CreateRoutingProvider();
         var router = new SpeakerRouter();
+        var cacheIndex = ReadIndex();
         int completed = 0, hits = 0, failed = 0, failuresInARow = 0;
         foreach (var line in lines)
         {
@@ -69,12 +120,12 @@ public sealed class QuestVoicePreSynthesisService(
                         throw new InvalidOperationException($"角色「{line.Speaker}」引用不存在的声线 {missingId}。");
                 }
 
-                var settings = mapped is null ? factory.CreateTtsSettings() : factory.CreateVoiceSettings(mapped);
+                var settings = mapped is null ? runtimeFactory.CreateTtsSettings() : runtimeFactory.CreateVoiceSettings(mapped);
                 var language = speechLanguage == "jpn" ? "ja" : "zh";
                 settings = settings with
                 {
                     Protocol = (settings.Protocol ?? new TtsProtocolSettings()) with
-                    { TextLanguage = language, PromptLanguage = language, StreamingMode = false, StreamPlayback = false }
+                    { TextLanguage = language, StreamingMode = false, StreamPlayback = false }
                 };
                 var binding = new VoiceBinding(settings.Voice.Name, settings.Voice.GptWeightsPath,
                     settings.Voice.SovitsWeightsPath,
@@ -94,6 +145,7 @@ public sealed class QuestVoicePreSynthesisService(
                 var wavPath = Path.Combine(CacheDirectory, hash + ".wav");
                 if (await IsValidCachedWavAsync(wavPath, cancellationToken))
                 {
+                    await RegisterCachedWAVAsync(cacheIndex, line.Key, speechLanguage, wavPath, cancellationToken);
                     completed++; hits++; failuresInARow = 0;
                     progress.Report(new(line.Key, "缓存命中", completed, lines.Count, hits, failed));
                     continue;
@@ -104,16 +156,16 @@ public sealed class QuestVoicePreSynthesisService(
                 var result = await provider.SynthesizeAsync(settings,
                     new TtsRequest(line.Text, binding), null, CancellationToken.None);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (result.SourceEncoding != TtsAudioEncoding.Pcm16Wav)
-                    throw new InvalidDataException("所选引擎没有返回 PCM16 WAV，无法安全缓存。");
-                _ = new WavProcessor().ValidateCompletedResponse(result.Wav);
+                // 非 GPT 引擎可能返回 MP3，沿用 BetterGI 的受限解码器输出一致的 PCM16 WAV 缓存。
+                var audio = new TtsAudioDecoder().Decode(result.Wav, result.SourceEncoding, cancellationToken);
                 var temporary = wavPath + "." + Guid.NewGuid().ToString("N") + ".partial";
                 try
                 {
-                    await File.WriteAllBytesAsync(temporary, result.Wav, cancellationToken);
+                    await File.WriteAllBytesAsync(temporary, audio.Bytes, cancellationToken);
                     File.Move(temporary, wavPath, true);
                 }
                 finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                await RegisterCachedWAVAsync(cacheIndex, line.Key, speechLanguage, wavPath, cancellationToken);
                 completed++; failuresInARow = 0;
                 progress.Report(new(line.Key, "已生成", completed, lines.Count, hits, failed));
             }

@@ -10,8 +10,8 @@
                  xmlns:vm="clr-namespace:BetterGenshinImpact.ViewModel.Pages"
                  xmlns:enginevm="clr-namespace:BetterGenshinImpact.ViewModel.Pages.QuestVoiceSettings"
                  Title="{i18n:T 自动配音设置}"
-                 Width="980"
-                 Height="780"
+                 Width="1120"
+                 Height="820"
                  MinWidth="760"
                  MinHeight="560"
                  d:DataContext="{d:DesignInstance Type=vm:QuestVoiceSettingsViewModel}"
@@ -49,14 +49,25 @@
         <ui:TitleBar Grid.Row="0" Title="{i18n:T 自动配音设置}" Icon="{ui:SymbolIcon Speaker224}" />
 
         <TabControl Grid.Row="1" Margin="16,4,16,0" BorderThickness="0">
+            <!-- 唯一全局剧情选择；预合成与台词浏览共享同一模型。 -->
+            <TabItem Header="1. 剧情与预合成">
+                <settings:QuestVoiceStoryPanel DataContext="{Binding Story, Mode=OneWay}" />
+            </TabItem>
             <!-- 引擎与声线：左侧 4 个引擎，★ 为默认引擎；右侧为所选引擎的全部设置 -->
-            <TabItem Header="引擎与声线">
+            <TabItem Header="2. 引擎与声线">
                 <Grid Margin="0,12,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="210" />
+                        <ColumnDefinition Width="290" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <ListBox Grid.Column="0" ItemsSource="{Binding Engines, Mode=OneWay}" SelectedItem="{Binding SelectedEngine, Mode=TwoWay}" Margin="0,0,12,0">
+                                        <Grid Grid.Column="0" Margin="0,0,12,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ui:TextBlock Grid.Row="0" Text="语音引擎" FontWeight="SemiBold" Margin="0,0,0,8" /><ListBox Grid.Row="1" ItemsSource="{Binding Engines, Mode=OneWay}" SelectedItem="{Binding SelectedEngine, Mode=TwoWay}" Margin="0,0,8,8">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
@@ -66,7 +77,36 @@
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
-                    </ListBox>
+                    </ListBox>                        <ui:TextBlock Grid.Row="2" Text="GPT-SoVITS 声线库" FontWeight="SemiBold" Margin="0,8,0,8">
+                            <ui:TextBlock.Style>
+                                <Style TargetType="ui:TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsGptSelected, Mode=OneWay}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:TextBlock.Style>
+                        </ui:TextBlock>
+                        <ListBox Grid.Row="3" ItemsSource="{Binding Management.GptProfiles, Mode=OneWay}"
+                                 SelectedItem="{Binding Management.SelectedGptProfile, Mode=TwoWay}"
+                                 DisplayMemberPath="Name" Margin="0,0,8,0" MaxHeight="230"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling">
+                            <ListBox.Style>
+                                <Style TargetType="ListBox">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsGptSelected, Mode=OneWay}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Style>
+                        </ListBox>
+                    </Grid>
                     <Grid Grid.Column="1">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -92,23 +132,21 @@
             </TabItem>
 
             <!-- 角色：角色声线开关、旅行者、默认 NPC 与旁白、角色列表 -->
-            <TabItem Header="角色">
-                <ScrollViewer Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="0,0,12,12">
-                        <Border Style="{StaticResource QuestVoiceSectionStyle}" IsEnabled="{Binding IsConfigEditable, Mode=OneWay}">
-                            <StackPanel>
-                                <ui:ToggleSwitch Content="启用角色声线" IsChecked="{Binding Config.RoutingEnabled, Mode=TwoWay}" />
-                                <ui:TextBlock Text="关闭时所有台词使用默认引擎的默认声音；开启后按角色分配的声线朗读，未匹配的角色使用默认 NPC 声线。"
-                                              Foreground="{DynamicResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Border>
-                        <pages:QuestVoiceManagementView DataContext="{Binding Management, Mode=OneWay}" />
-                    </StackPanel>
-                </ScrollViewer>
+                        <TabItem Header="3. 角色映射">
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <ui:ToggleSwitch Grid.Row="0" Margin="0,0,0,10" Content="启用角色声线"
+                                     IsChecked="{Binding Config.RoutingEnabled, Mode=TwoWay}"
+                                     IsEnabled="{Binding IsConfigEditable, Mode=OneWay}" />
+                    <pages:QuestVoiceManagementView Grid.Row="1" DataContext="{Binding Management, Mode=OneWay}" />
+                </Grid>
             </TabItem>
 
             <!-- 识别：OCR 直接使用全局 OCR，模型跟随 OCR 配置，设备跟随硬件加速设置 -->
-            <TabItem Header="识别">
+            <TabItem Header="4. 识别与算法">
                 <ScrollViewer Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,0,12,12" IsEnabled="{Binding IsConfigEditable, Mode=OneWay}">
                         <Border Style="{StaticResource QuestVoiceSectionStyle}">
@@ -139,7 +177,7 @@
             </TabItem>
 
             <!-- 高级：超时、缺失策略、角色目录文件 -->
-            <TabItem Header="高级">
+            <TabItem Header="5. 高级与目录">
                 <ScrollViewer Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,0,12,12">
                         <Border Style="{StaticResource QuestVoiceSectionStyle}" IsEnabled="{Binding IsConfigEditable, Mode=OneWay}">

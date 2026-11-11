@@ -51,6 +51,8 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
     public QuestVoiceStoryWorkspace Story { get; }
     /// <summary>4 个引擎：GPT-SoVITS 在前，其余引擎随后；★ 表示默认引擎。</summary>
     public IReadOnlyList<QuestVoiceEngineEntry> Engines { get; }
+    /// <summary>仅选中 GPT-SoVITS 时显示独立声线列表。</summary>
+    public bool IsGptSelected => SelectedEngine?.Provider.Id == "gpt-sovits";
     /// <summary>正在编辑的引擎；与默认引擎在同一页可见。</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SetDefaultEngineCommand))]
@@ -99,6 +101,7 @@ public partial class QuestVoiceSettingsViewModel : ViewModel
     /// <summary>切换编辑对象只使旧请求失效；进入 GPT-SoVITS 时选中第一条声线。</summary>
     partial void OnSelectedEngineChanged(QuestVoiceEngineEntry? oldValue, QuestVoiceEngineEntry? newValue)
     {
+        OnPropertyChanged(nameof(IsGptSelected));
         (oldValue?.Settings as EngineSettingsViewModel)?.SetActive(false);
         (newValue?.Settings as EngineSettingsViewModel)?.SetActive(true);
         if (newValue?.Settings is GptSovitsSettingsViewModel) _ = Gpt.SelectFirstProfileAsync();

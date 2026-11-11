@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Media;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.PreSynthesis;
@@ -54,6 +55,8 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     private bool _catalogLoaded;
     private DialogueLanguageMap? _pair;
     private bool _pauseRequested;
+    /// <summary>只播放缓存 WAV 的界面预览播放器，不影响实时 WASAPI 播放会话。</summary>
+    private readonly MediaPlayer _cachedPreview = new();
 
     /// <summary>单一全局配置，同步角色与引擎页面。</summary>
     public QuestVoiceConfig Config => _config;
@@ -80,11 +83,11 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>P1 队列进度文本。</summary>
     [ObservableProperty] private string _preSynthesisStatus = "尚未开始预合成";
     /// <summary>已经完成的条数（包括缓存命中）。</summary>
-    [ObservableProperty] private int _completed;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CacheHitRate))] private int _completed;
     /// <summary>需要处理的总条数。</summary>
     [ObservableProperty] private int _total;
     /// <summary>已复用的 WAV 数量。</summary>
-    [ObservableProperty] private int _cacheHits;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CacheHitRate))] private int _cacheHits;
     /// <summary>生成失败的条数。</summary>
     [ObservableProperty] private int _failed;
     /// <summary>后台是否正在运行。</summary>
@@ -96,6 +99,8 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     public string CacheDirectory => _preSynthesis.CacheDirectory;
     /// <summary>UI 显示进度，避免除以零。</summary>
     public double ProgressPercent => Total == 0 ? 0 : Math.Clamp(100d * Completed / Total, 0, 100);
+    /// <summary>已完成项中来自有效 WAV 缓存的百分比。</summary>
+    public double CacheHitRate => Completed == 0 ? 0 : 100d * CacheHits / Completed;
 
     /// <summary>复用 BetterGI 的后台服务及配置，不新增独立 TTS 账号/设置。</summary>
     public QuestVoiceStoryWorkspace(QuestVoiceSessionFactory factory, QuestVoiceConfig config, QuestVoiceService live)
@@ -124,14 +129,25 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         _ = LoadChapterAsync(value);
     }
 
-    /// <summary>聚焦行向用户显示上下文关系。</summary>
+    /// <summary>只使用 Yatta 的实际边计算前后关联；相邻列表行不代表剧情图上相邻。</summary>
     partial void OnSelectedLineChanged(QuestVoiceDialogueRow? value)
     {
-        var index = value is null ? -1 : Lines.IndexOf(value);
-        FocusContext = index < 0 ? "选择任意对白查看前后关系" :
-            "前置：" + (index > 0 ? Lines[index - 1].Chinese : "章节起始") +
-            "  →  当前：" + value!.Chinese +
-            "  →  后续：" + (index + 1 < Lines.Count ? Lines[index + 1].Chinese : "章节结束");
+        if (value?.Mapping.Chs is not { } node || _pair is null)
+        {
+            FocusContext = "选择任意对白查看前置与后续节点";
+            return;
+        }
+
+        string Describe(string? key) => Lines.FirstOrDefault(line => line.Key == key) is { } row
+            ? row.Speaker + "：" + row.Chinese
+            : "中间包含结构节点或尚未展开的分支";
+        var previous = _pair.Chs.Edges.Where(edge => edge.TargetKey == node.Key)
+            .Select(edge => Describe(edge.FromKey)).Distinct().Take(3).ToArray();
+        var following = _pair.Chs.Edges.Where(edge => edge.FromKey == node.Key)
+            .Select(edge => Describe(edge.TargetKey)).Distinct().Take(3).ToArray();
+        FocusContext = "前置：" + (previous.Length > 0 ? string.Join(" / ", previous) : "本任务无直接前置") +
+            "  →  当前：" + value.Chinese +
+            "  →  后续：" + (following.Length > 0 ? string.Join(" / ", following) : "本任务无直接后续");
     }
 
     /// <summary>首次打开设置窗口只加载一次目录；失败可手动刷新。</summary>
@@ -270,6 +286,42 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             _batchCancellation = null;
             _pauseRequested = false;
         }
+    }
+
+    /// <summary>播放本地缓存的 WAV，未生成时清晰提示而不是重新请求在线 TTS。</summary>
+    [RelayCommand]
+    private void PlayCachedWAV()
+    {
+        _cachedPreview.Close();
+        if (SelectedLine is not { } selected)
+        {
+            PreSynthesisStatus = "请先选择要播放的对白。";
+            return;
+        }
+        var path = _preSynthesis.FindCachedWAV(selected.Key, _config.SpeechLanguage);
+        if (path is null)
+        {
+            PreSynthesisStatus = "当前台词没有已生成的本地 WAV，需先执行预合成。";
+            return;
+        }
+        try
+        {
+            _cachedPreview.Open(new Uri(path));
+            _cachedPreview.Play();
+            PreSynthesisStatus = "正在播放本地 WAV：" + selected.Speaker;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            PreSynthesisStatus = "播放失败：" + error.Message;
+        }
+    }
+
+    /// <summary>停止当前本地试听，不影响任何正在生成的配音。</summary>
+    [RelayCommand]
+    private void StopCachedWAV()
+    {
+        _cachedPreview.Close();
+        PreSynthesisStatus = "已停止本地 WAV 试听。";
     }
 
     /// <summary>暂停新的语音任务；当前已经发送的 HTTP 请求继续安全排空。</summary>
