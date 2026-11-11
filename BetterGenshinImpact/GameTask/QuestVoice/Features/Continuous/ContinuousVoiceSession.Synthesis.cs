@@ -13,7 +13,7 @@ using BetterGenshinImpact.GameTask.QuestVoice.Core.Continuous;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Configuration;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.PreSynthesis;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Routing;
-using BetterGenshinImpact.GameTask.QuestVoice.Core.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Core.TTS;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Audio;
 
 namespace BetterGenshinImpact.GameTask.QuestVoice.Features.Continuous;

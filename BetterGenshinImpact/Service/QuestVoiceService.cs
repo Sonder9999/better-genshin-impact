@@ -1,3 +1,4 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -5,9 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Diagnostics;
-using BetterGenshinImpact.GameTask.QuestVoice.Features.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Features.TTS;
 using BetterGenshinImpact.GameTask.Runtime;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;

@@ -1,10 +1,10 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
 using System;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.Service;
 using BetterGenshinImpact.ViewModel.Pages.QuestVoiceSettings;
 using CommunityToolkit.Mvvm.ComponentModel;

@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using BetterGenshinImpact.GameTask.QuestVoice;
+using System.Collections.Generic;
 using BetterGenshinImpact.Service;
 
 namespace BetterGenshinImpact.ViewModel.Pages.QuestVoiceSettings;

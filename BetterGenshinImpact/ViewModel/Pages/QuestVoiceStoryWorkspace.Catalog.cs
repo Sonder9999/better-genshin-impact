@@ -1,3 +1,5 @@
+using BetterGenshinImpact.GameTask.QuestVoice.Domain;
+using BetterGenshinImpact.GameTask.QuestVoice.Genshin;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -7,8 +9,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using QuestVoice.Core;
-using QuestVoice.Games.Genshin;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 

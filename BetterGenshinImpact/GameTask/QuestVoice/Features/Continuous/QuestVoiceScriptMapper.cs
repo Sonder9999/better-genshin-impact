@@ -1,3 +1,5 @@
+using BetterGenshinImpact.GameTask.QuestVoice.Domain;
+using BetterGenshinImpact.GameTask.QuestVoice.Genshin;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,8 +8,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
-using QuestVoice.Core;
-using QuestVoice.Games.Genshin;
 using Serilog;
 
 namespace BetterGenshinImpact.GameTask.QuestVoice.Features.Continuous;

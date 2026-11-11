@@ -1,10 +1,10 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
 using System;
 using System.Collections.Generic;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Continuous;
-using BetterGenshinImpact.GameTask.QuestVoice.Core.Ocr;
+using BetterGenshinImpact.GameTask.QuestVoice.Core.OCR;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Routing;
-using BetterGenshinImpact.GameTask.QuestVoice.Core.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Core.TTS;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Diagnostics;
 using Microsoft.Extensions.Logging;
 

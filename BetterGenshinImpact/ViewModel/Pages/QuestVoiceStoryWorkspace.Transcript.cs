@@ -1,8 +1,8 @@
+using BetterGenshinImpact.GameTask.QuestVoice.Domain;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections.ObjectModel;
-using QuestVoice.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BetterGenshinImpact.ViewModel.Pages;

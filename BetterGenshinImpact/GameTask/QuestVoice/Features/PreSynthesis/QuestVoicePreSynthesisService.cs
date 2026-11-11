@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Configuration;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Routing;
-using BetterGenshinImpact.GameTask.QuestVoice.Core.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Core.TTS;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
-using BetterGenshinImpact.GameTask.QuestVoice.Features.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Features.TTS;
 using BetterGenshinImpact.Service;
 using JsonConvert = Newtonsoft.Json.JsonConvert;
 

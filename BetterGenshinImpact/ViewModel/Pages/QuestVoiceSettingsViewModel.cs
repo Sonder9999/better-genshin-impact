@@ -1,3 +1,4 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,9 +7,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using BetterGenshinImpact.Core.Config;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
-using BetterGenshinImpact.GameTask.QuestVoice.Features.Tts;
+using BetterGenshinImpact.GameTask.QuestVoice.Features.TTS;
 using BetterGenshinImpact.Service;
 using BetterGenshinImpact.ViewModel.Pages.QuestVoiceSettings;
 using CommunityToolkit.Mvvm.ComponentModel;

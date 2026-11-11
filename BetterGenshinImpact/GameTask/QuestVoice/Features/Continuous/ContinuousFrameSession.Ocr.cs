@@ -10,7 +10,7 @@ using System.Diagnostics;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Diagnostics;
 using System.Text;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Continuous;
-using BetterGenshinImpact.GameTask.QuestVoice.Core.Ocr;
+using BetterGenshinImpact.GameTask.QuestVoice.Core.OCR;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Routing;
 
 namespace BetterGenshinImpact.GameTask.QuestVoice.Features.Continuous;

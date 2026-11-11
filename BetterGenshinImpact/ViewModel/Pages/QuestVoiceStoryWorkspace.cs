@@ -1,3 +1,6 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
+using BetterGenshinImpact.GameTask.QuestVoice.Domain;
+using BetterGenshinImpact.GameTask.QuestVoice.Genshin;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,13 +14,10 @@ using System.Windows;
 using BetterGenshinImpact.View.Windows;
 using System.Windows.Media;
 using BetterGenshinImpact.Core.Config;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.PreSynthesis;
 using BetterGenshinImpact.Service;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using QuestVoice.Core;
-using QuestVoice.Games.Genshin;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 

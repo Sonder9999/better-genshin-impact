@@ -1,3 +1,4 @@
+using BetterGenshinImpact.GameTask.QuestVoice;
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -20,7 +21,6 @@ using BetterGenshinImpact.GameTask.SoloTask;
 using BetterGenshinImpact.GameTask.SoloTask.Execution;
 using BetterGenshinImpact.GameTask.AutoSkip.Audio;
 using BetterGenshinImpact.GameTask.Music.Service;
-using BetterGenshinImpact.GameTask.QuestVoice;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Diagnostics;
 using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
 using BetterGenshinImpact.GameTask.Runtime;
