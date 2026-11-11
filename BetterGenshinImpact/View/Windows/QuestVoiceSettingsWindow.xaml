@@ -180,6 +180,22 @@
             <TabItem Header="5. 高级与目录">
                 <ScrollViewer Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,0,12,12">
+                        <Border Style="{StaticResource QuestVoiceSectionStyle}">
+                            <StackPanel>
+                                <ui:TextBlock Text="预合成 WAV 缓存" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                <ui:TextBlock Text="{Binding Story.CacheSummary, Mode=OneWay}" Margin="0,0,0,8"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <WrapPanel>
+                                    <ui:Button Content="打开缓存目录" Margin="0,0,8,6"
+                                               Command="{Binding Story.OpenCacheDirectoryCommand, Mode=OneWay}" />
+                                    <ui:Button Content="清理可恢复的 WAV" Margin="0,0,8,6"
+                                               Command="{Binding Story.ClearCacheCommand, Mode=OneWay}"
+                                               IsEnabled="{Binding Story.IsEditable, Mode=OneWay}" />
+                                </WrapPanel>
+                                <ui:TextBlock Text="仅管理本功能生成的 WAV 与索引，模型、角色目录和剧情缓存不受影响。"
+                                              Foreground="{DynamicResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                         <Border Style="{StaticResource QuestVoiceSectionStyle}" IsEnabled="{Binding IsConfigEditable, Mode=OneWay}">
                             <StackPanel>
                                 <ui:TextBlock Text="网络超时（秒，对所有引擎生效）" FontWeight="SemiBold" Margin="0,0,0,8" />

@@ -189,6 +189,8 @@
                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Story.PreSynthesisStatus, Mode=OneWay}" />
                         <ProgressBar Height="4" Minimum="0" Maximum="100"
                                      Value="{Binding Story.ProgressPercent, Mode=OneWay}" />
+                        <ui:TextBlock Text="{Binding Story.CacheHitRate, StringFormat={}{0:F0}% 缓存命中率, Mode=OneWay}"
+                                      Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -286,6 +288,10 @@
             <!-- 操作 -->
             <WrapPanel Margin="16,12">
                 <ui:Button Margin="0,0,8,4" Appearance="Primary" Content="设置…" Icon="{ui:SymbolIcon Settings24}" Command="{Binding OpenSettingsCommand, Mode=OneWay}" />
+                <ui:Button Margin="0,0,8,4" Content="切换全局剧情" Icon="{ui:SymbolIcon List24}"
+                           Command="{Binding OpenSettingsCommand, Mode=OneWay}" />
+                <ui:Button Margin="0,0,8,4" Content="后台预合成剩余"
+                           Command="{Binding PreSynthesizeRemainingCommand, Mode=OneWay}" />
                 <ui:Button Margin="0,0,8,4" Content="校验配置" Icon="{ui:SymbolIcon CheckmarkCircle24}" Command="{Binding ValidateCommand, Mode=OneWay}" />
                 <ui:Button Margin="0,0,8,4" Content="打开日志" Icon="{ui:SymbolIcon Document24}" Command="{Binding OpenLogFileCommand, Mode=OneWay}" />
                 <ui:Button Margin="0,0,8,4" Content="打开日志目录" Icon="{ui:SymbolIcon FolderOpen24}" Command="{Binding OpenLogFolderCommand, Mode=OneWay}" />

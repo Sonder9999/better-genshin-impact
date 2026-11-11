@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using BetterGenshinImpact.View.Windows;
 using System.Windows.Media;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.QuestVoice;
@@ -97,6 +100,21 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     public bool IsEditable => !IsGenerating;
     /// <summary>用于右侧资源操作区。</summary>
     public string CacheDirectory => _preSynthesis.CacheDirectory;
+    /// <summary>只统计本模块生成的 WAV，不扫描模型、视频或其他工具缓存。</summary>
+    public string CacheSummary
+    {
+        get
+        {
+            try
+            {
+                if (!Directory.Exists(CacheDirectory)) return "WAV 缓存：0 条 · 0 MiB";
+                var files = Directory.EnumerateFiles(CacheDirectory, "*.wav").Select(path => new FileInfo(path)).ToArray();
+                return $"WAV 缓存：{files.Length} 条 · {files.Sum(file => file.Length) / 1048576d:F1} MiB";
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { return "WAV 缓存统计失败：" + error.Message; }
+        }
+    }
     /// <summary>UI 显示进度，避免除以零。</summary>
     public double ProgressPercent => Total == 0 ? 0 : Math.Clamp(100d * Completed / Total, 0, 100);
     /// <summary>已完成项中来自有效 WAV 缓存的百分比。</summary>
@@ -282,6 +300,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         finally
         {
             IsGenerating = false;
+            OnPropertyChanged(nameof(CacheSummary));
             _batchCancellation.Dispose();
             _batchCancellation = null;
             _pauseRequested = false;
@@ -322,6 +341,54 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     {
         _cachedPreview.Close();
         PreSynthesisStatus = "已停止本地 WAV 试听。";
+    }
+
+    /// <summary>在资源管理器中打开预合成缓存目录，用户运行时仍可手工查看 WAV。</summary>
+    [RelayCommand]
+    private void OpenCacheDirectory()
+    {
+        try
+        {
+            Directory.CreateDirectory(CacheDirectory);
+            Process.Start(new ProcessStartInfo("explorer.exe", CacheDirectory) { UseShellExecute = true });
+        }
+        catch (Exception error) { PreSynthesisStatus = "打开缓存目录失败：" + error.Message; }
+    }
+
+    /// <summary>用户确认后只清理本模块可恢复的 WAV 和节点索引，保留其余声线与剧情配置。</summary>
+    [RelayCommand]
+    private async Task ClearCacheAsync()
+    {
+        if (IsGenerating) { PreSynthesisStatus = "请先停止预合成，不能清理正在写入的缓存。"; return; }
+        if (!Directory.Exists(CacheDirectory)) { PreSynthesisStatus = "缓存目录为空。"; return; }
+        if ((new DirectoryInfo(CacheDirectory).Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            PreSynthesisStatus = "缓存目录为链接路径，已拒绝自动清理。";
+            return;
+        }
+        if (await ThemedMessageBox.QuestionAsync(
+                "确定清理 QuestVoice 预合成 WAV 缓存吗？这些音频可重新生成；其他配置和模型不会删除。",
+                "清理预合成缓存") != MessageBoxResult.Yes) return;
+
+        try
+        {
+            _cachedPreview.Close();
+            var count = 0;
+            foreach (var file in Directory.EnumerateFiles(CacheDirectory, "*.wav"))
+            {
+                File.Delete(file);
+                count++;
+            }
+            var index = Path.Combine(CacheDirectory, "line-index.json");
+            if (File.Exists(index)) File.Delete(index);
+            OnPropertyChanged(nameof(CacheSummary));
+            PreSynthesisStatus = $"已清理 {count} 个生成 WAV，保留全部角色映射和剧情数据。";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            OnPropertyChanged(nameof(CacheSummary));
+            PreSynthesisStatus = "部分缓存清理失败：" + error.Message;
+        }
     }
 
     /// <summary>暂停新的语音任务；当前已经发送的 HTTP 请求继续安全排空。</summary>

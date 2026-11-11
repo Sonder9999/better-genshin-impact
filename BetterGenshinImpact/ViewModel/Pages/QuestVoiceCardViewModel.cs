@@ -80,6 +80,26 @@ public partial class QuestVoiceCardViewModel : ObservableObject
         catch (Exception exception) { CommandError = exception.Message; }
     }
 
+    /// <summary>复用全局已选剧情，跳过已有 WAV，只补完未命中缓存的台词。</summary>
+    [RelayCommand]
+    private async Task PreSynthesizeRemainingAsync()
+    {
+        CommandError = "";
+        try
+        {
+            var story = _settings.Story;
+            if (story.IsGenerating) { CommandError = "后台预合成已经运行中。"; return; }
+            await story.EnsureLoadedAsync();
+            if (story.SelectedChapter is null)
+            {
+                CommandError = "请先在「设置与预合成工作台」选定全局剧情。";
+                return;
+            }
+            await story.StartPreSynthesisCommand.ExecuteAsync(null);
+        }
+        catch (Exception error) { CommandError = "启动预合成失败：" + error.Message; }
+    }
+
     /// <summary>执行静态配置校验，结果显示在卡片中。</summary>
     [RelayCommand]
     private async Task ValidateAsync(CancellationToken token)
