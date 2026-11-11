@@ -10,6 +10,7 @@
              ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"
              ui:Design.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="QuestStoryBoolVisibility" />
         <!-- 不替换 BetterGI 的按钮、输入、选择器主题，只统一面板边界。 -->
         <Style x:Key="QuestStorySection" TargetType="Border">
             <Setter Property="Padding" Value="12" />
@@ -28,89 +29,74 @@
         <TabItem Header="1. 剧情选择与声线">
             <Grid Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.05*" MinWidth="255" />
-                    <ColumnDefinition Width="1.1*" MinWidth="320" />
+                    <ColumnDefinition Width="1*" MinWidth="260" />
+                    <ColumnDefinition Width="1.05*" MinWidth="320" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 与 QuestVoice QuestSelectionPanel 一致的系列/章节/任务分级浏览，使用 BetterGI 主题。 -->
                 <Border Grid.Column="0" Style="{StaticResource QuestStorySection}" Margin="0,0,10,0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Margin="0,0,0,9">
-                            <ui:TextBlock FontWeight="SemiBold" Text="选择剧情与任务" FontSize="15" />
-                            <ui:TextBlock Text="点击系列即可加载全部章节、任务及双语台词，无需逐章选择。"
-                                          TextWrapping="Wrap" Margin="0,5,0,0"
-                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
+                        <ui:TextBlock Grid.Row="0" Text="选择剧情" FontWeight="SemiBold" FontSize="15"
+                                      Margin="0,0,0,10" />
                         <Grid Grid.Row="1" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ui:TextBox Grid.Column="0" PlaceholderText="搜索系列或章节名称"
+                            <ui:TextBox PlaceholderText="搜索剧情系列或章节"
                                         Text="{Binding ChapterSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         IsEnabled="{Binding IsEditable, Mode=OneWay}" />
-                            <ui:Button Grid.Column="1" Content="刷新目录" Margin="8,0,0,0"
+                            <ui:Button Grid.Column="1" Content="刷新" Margin="8,0,0,0"
                                        Command="{Binding RefreshCatalogCommand, Mode=OneWay}"
                                        IsEnabled="{Binding IsEditable, Mode=OneWay}" />
                         </Grid>
-                        <ui:TextBlock Grid.Row="2" Text="{Binding CatalogStatus, Mode=OneWay}"
-                                      TextTrimming="CharacterEllipsis" ToolTip="{Binding CatalogStatus, Mode=OneWay}"
-                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8" />
-                        <ListBox Grid.Row="3" ItemsSource="{Binding CatalogRows, Mode=OneWay}"
+                        <ListBox Grid.Row="2" ItemsSource="{Binding CatalogRows, Mode=OneWay}"
                                  SelectedItem="{Binding SelectedCatalogRow, Mode=TwoWay}"
                                  IsEnabled="{Binding IsEditable, Mode=OneWay}"
                                  Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                  BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  VirtualizingPanel.IsVirtualizing="True"
                                  VirtualizingPanel.VirtualizationMode="Recycling">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                     <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-                                    <Setter Property="Background" Value="Transparent" />
-                                    <Setter Property="Padding" Value="2,3" />
+                                    <Setter Property="Padding" Value="5,7" />
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="7,6">
-                                        <DockPanel>
-                                            <ui:TextBlock DockPanel.Dock="Left" Text="{Binding DisplayKind, Mode=OneWay}"
-                                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                          FontWeight="SemiBold" Margin="0,0,9,0" />
-                                            <ui:TextBlock Text="{Binding Title, Mode=OneWay}"
-                                                          TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
-                                                          ToolTip="{Binding Title, Mode=OneWay}" />
-                                        </DockPanel>
-                                        <ui:TextBlock Text="{Binding Detail, Mode=OneWay}"
+                                    <DockPanel Margin="4,2">
+                                        <ui:TextBlock DockPanel.Dock="Left" Text="{Binding DisplayKind, Mode=OneWay}"
+                                                      FontWeight="SemiBold"
                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                      TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
-                                    </StackPanel>
+                                                      Margin="0,0,12,0" />
+                                        <ui:TextBlock Text="{Binding Title, Mode=OneWay}"
+                                                      FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                      ToolTip="{Binding Title, Mode=OneWay}" />
+                                    </DockPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <StackPanel Grid.Row="4" Margin="0,8,0,0">
-                            <ui:TextBlock Text="{Binding ChapterStatus, Mode=OneWay}" TextTrimming="CharacterEllipsis"
-                                          ToolTip="{Binding ChapterStatus, Mode=OneWay}" />
-                            <ui:Button Content="重新读取所选系列 / 章节" Margin="0,8,0,0"
-                                       Command="{Binding ReloadSelectedSelectionCommand, Mode=OneWay}"
-                                       IsEnabled="{Binding IsEditable, Mode=OneWay}" />                            <ui:TextBlock Text="{Binding TaskFilterStatus, Mode=OneWay}"
-                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
+                        <!-- 成功加载后完全收起提示；仅真实错误时提供重试入口。 -->
+                        <StackPanel Grid.Row="3" Margin="0,8,0,0"
+                                    Visibility="{Binding HasChapterError, Converter={StaticResource QuestStoryBoolVisibility}}">
+                            <ui:TextBlock Text="{Binding ChapterStatus, Mode=OneWay}" TextWrapping="Wrap"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <ui:Button Content="重试读取" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                       Command="{Binding ReloadSelectedSelectionCommand, Mode=OneWay}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- 右侧只管理当前出场角色的声线与配音范围，不再复制台词列表或节点聚焦。 -->
                 <Grid Grid.Column="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -118,58 +104,59 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Style="{StaticResource QuestStorySection}" Margin="0,0,0,10">
-                        <StackPanel>
-                            <ui:TextBlock Text="当前剧情与双语原文" FontSize="15" FontWeight="SemiBold" />
-                            <ui:TextBlock Text="{Binding ActiveSelectionLabel, Mode=OneWay}"
-                                          Foreground="{DynamicResource SystemAccentColorPrimaryBrush}"
-                                          TextTrimming="CharacterEllipsis" Margin="0,6,0,8" />
-                            <WrapPanel IsEnabled="{Binding IsEditable, Mode=OneWay}">
-                                <StackPanel Width="154" Margin="0,0,10,8">
-                                    <ui:TextBlock Text="目标配音语言" Margin="0,0,0,4" />
-                                    <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Config.SpeechLanguage, Mode=TwoWay}">
+                        <StackPanel IsEnabled="{Binding IsEditable, Mode=OneWay}">
+                            <ui:TextBlock Text="配音设置" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <StackPanel Width="145" Margin="0,0,10,0">
+                                    <ui:TextBlock Text="目标语言" Margin="0,0,0,5" />
+                                    <ComboBox SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Config.SpeechLanguage, Mode=TwoWay}">
                                         <ComboBoxItem Tag="jpn" Content="日语（JP）" />
                                         <ComboBoxItem Tag="chs" Content="中文（CHS）" />
                                     </ComboBox>
                                 </StackPanel>
-                                <StackPanel Width="170" Margin="0,0,10,8">
-                                    <ui:TextBlock Text="旅行者游戏昵称" Margin="0,0,0,4" />
+                                <StackPanel Width="155" Margin="0,0,10,0">
+                                    <ui:TextBlock Text="旅行者昵称" Margin="0,0,0,5" />
                                     <ui:TextBox Text="{Binding Config.TravelerNickname, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                 PlaceholderText="未指定" />
                                 </StackPanel>
-                                <ui:ToggleSwitch Content="荧" Margin="0,18,0,0"
-                                                 IsChecked="{Binding Config.FemaleTraveler, Mode=TwoWay}" />
+                                <StackPanel Width="105">
+                                    <ui:TextBlock Text="旅行者" Margin="0,0,0,5" />
+                                    <ComboBox SelectedIndex="{Binding TravelerChoiceIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="空" />
+                                        <ComboBoxItem Content="荧" />
+                                    </ComboBox>
+                                </StackPanel>
                             </WrapPanel>
-                            <ui:ToggleSwitch Content="启用中日原文精确路由（实时 P0）"
-                                             IsEnabled="{Binding IsEditable, Mode=OneWay}"
-                                             IsChecked="{Binding Config.ScriptLanguageRoutingEnabled, Mode=TwoWay}" />
-                            <ui:TextBlock Text="仅匹配当前系列或章节中唯一、可靠的双语节点；不翻译或猜测短句，台词浏览在第二个标签。"
-                                          Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                          TextWrapping="Wrap" Margin="0,5,0,0" />
                         </StackPanel>
                     </Border>
+
                     <Border Grid.Row="1" Style="{StaticResource QuestStorySection}" Margin="0,0,0,10">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <ui:TextBlock Grid.Row="0" Text="当前剧情角色与声线绑定" FontSize="15" FontWeight="SemiBold" />
-                            <ui:TextBlock Grid.Row="1" Text="{Binding Management.CurrentStorySummary, Mode=OneWay}"
-                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,8" />
-                            <WrapPanel Grid.Row="2" Margin="0,0,0,6">
-                                <ui:Button Content="补齐角色档案" Margin="0,0,8,4"
-                                           Command="{Binding Management.AddMissingStorySpeakersCommand, Mode=OneWay}" />
-                                <ui:Button Content="精确匹配声线" Margin="0,0,8,4"
-                                           Command="{Binding Management.AutoBindCurrentStoryVoicesCommand, Mode=OneWay}" />
-                            </WrapPanel>
-                            <ListBox Grid.Row="3" ItemsSource="{Binding Management.CurrentStorySpeakers, Mode=OneWay}"
+                            <Grid Grid.Row="0" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock VerticalAlignment="Center" Text="{Binding Management.StoryRoleCountLabel, Mode=OneWay}"
+                                              FontSize="15" FontWeight="SemiBold" />
+                                <ComboBox Grid.Column="1" Width="110"
+                                          SelectedIndex="{Binding Management.StoryRoleFilter, Mode=TwoWay}">
+                                    <ComboBoxItem Content="全部角色" />
+                                    <ComboBoxItem Content="未绑定" />
+                                    <ComboBoxItem Content="已绑定" />
+                                </ComboBox>
+                            </Grid>
+                            <ListBox Grid.Row="1" ItemsSource="{Binding Management.DisplayedStorySpeakers, Mode=OneWay}"
                                      Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                      BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      VirtualizingPanel.IsVirtualizing="True"
                                      VirtualizingPanel.VirtualizationMode="Recycling">
                                 <ListBox.ItemContainerStyle>
@@ -181,13 +168,13 @@
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid>
+                                        <Grid Margin="0,2">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="95" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <ui:TextBlock Grid.Column="0" Text="{Binding DisplayName, Mode=OneWay}"
-                                                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                          TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                           ToolTip="{Binding DisplayName, Mode=OneWay}" />
                                             <pages:QuestVoiceVoiceSelector Grid.Column="1"
                                                 ItemsSource="{Binding DataContext.Management.VoiceChoices, RelativeSource={RelativeSource AncestorType={x:Type local:QuestVoiceStoryPanel}}, Mode=OneWay}"
@@ -199,26 +186,30 @@
                             </ListBox>
                         </Grid>
                     </Border>
+
                     <Border Grid.Row="2" Style="{StaticResource QuestStorySection}">
                         <StackPanel>
-                            <ui:TextBlock Text="{Binding PreSynthesisStatus, Mode=OneWay}"
-                                          TextTrimming="CharacterEllipsis" ToolTip="{Binding PreSynthesisStatus, Mode=OneWay}" />
-                            <ProgressBar Height="5" Minimum="0" Maximum="100" Margin="0,8,0,8"
-                                         Value="{Binding ProgressPercent, Mode=OneWay}" />
                             <WrapPanel>
-                                <ui:Button Content="预合成整个已选范围" Appearance="Primary" Margin="0,0,8,4"
+                                <ui:Button Content="预合成所选剧情" Appearance="Primary" Margin="0,0,8,0"
                                            Command="{Binding StartPreSynthesisCommand, Mode=OneWay}"
                                            IsEnabled="{Binding IsEditable, Mode=OneWay}" />
-                                <ui:Button Content="暂停" Margin="0,0,8,4"
+                                <ui:Button Content="暂停" Margin="0,0,6,0"
                                            Command="{Binding PausePreSynthesisCommand, Mode=OneWay}"
                                            IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
-                                <ui:Button Content="恢复" Margin="0,0,8,4"
+                                <ui:Button Content="继续" Margin="0,0,6,0"
                                            Command="{Binding ResumePreSynthesisCommand, Mode=OneWay}"
                                            IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
-                                <ui:Button Content="停止" Margin="0,0,8,4"
-                                           Command="{Binding StopPreSynthesisCommand, Mode=OneWay}"
+                                <ui:Button Content="停止" Command="{Binding StopPreSynthesisCommand, Mode=OneWay}"
                                            IsEnabled="{Binding IsGenerating, Mode=OneWay}" />
                             </WrapPanel>
+                            <StackPanel Visibility="{Binding HasPreSynthesisActivity, Converter={StaticResource QuestStoryBoolVisibility}}"
+                                        Margin="0,8,0,0">
+                                <ProgressBar Height="4" Minimum="0" Maximum="100"
+                                             Value="{Binding ProgressPercent, Mode=OneWay}" />
+                                <ui:TextBlock Text="{Binding PreSynthesisStatus, Mode=OneWay}" Margin="0,5,0,0"
+                                              TextTrimming="CharacterEllipsis" ToolTip="{Binding PreSynthesisStatus, Mode=OneWay}"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -227,26 +218,21 @@
         <!-- 全文浏览：章节、主任务、子任务、对白、选项一条连续的阅读流，不需要多次展开。 -->
         <TabItem Header="2. 剧情文稿与台词">
             <Grid Margin="0,12,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Border Grid.Row="0" Style="{StaticResource QuestStorySection}" Margin="0,0,0,8">
-                    <StackPanel>
-                        <ui:TextBlock Text="{Binding ActiveSelectionLabel, Mode=OneWay}"
-                                      FontSize="16" FontWeight="SemiBold" />
-                        <ui:TextBlock Text="{Binding ChapterStatus, Mode=OneWay}"
-                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                      TextWrapping="Wrap" Margin="0,5,0,0" />
-                        <ui:TextBlock Text="连续浏览全部章节及任务；对白可点击查看双语原文与试听，不需要逐层展开。"
-                                      Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                      Margin="0,4,0,0" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Row="1" Style="{StaticResource QuestStorySection}">
-                    <ListBox ItemsSource="{Binding TranscriptRows, Mode=OneWay}"
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.8*" MinWidth="320" />
+                    <ColumnDefinition Width="1*" MinWidth="260" />
+                </Grid.ColumnDefinitions>
+                <!-- 左侧连续剧情稿，章与任务以字体和留白区分。 -->
+                <Border Grid.Column="0" Style="{StaticResource QuestStorySection}" Margin="0,0,10,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <ui:TextBlock Grid.Row="0" Text="{Binding ActiveSelectionLabel, Mode=OneWay}"
+                                      FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"
+                                      TextTrimming="CharacterEllipsis" />
+                        <ListBox Grid.Row="1" ItemsSource="{Binding TranscriptRows, Mode=OneWay}"
                              SelectedItem="{Binding SelectedTranscriptRow, Mode=TwoWay}"
                              Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"
@@ -349,35 +335,55 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </Grid>
                 </Border>
-
-                <Expander Grid.Row="2" Header="所选台词 · 双语原文 / 节点关系 / 本地 WAV" Margin="0,8,0,0">
-                    <Border Style="{StaticResource QuestStorySection}">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="184"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel>
-                                <ui:TextBlock Text="{Binding FocusContext, Mode=OneWay}" TextWrapping="Wrap"
-                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                              Margin="0,0,0,8" />
-                                <ui:TextBlock Text="中文字幕" FontWeight="SemiBold" Margin="0,0,0,4" />
+                <!-- 右侧只保留中日原文与 WAV 试听，没有前置/后续关系和重复状态栏。 -->
+                <Border Grid.Column="1" Style="{StaticResource QuestStorySection}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ui:TextBlock Grid.Row="0" Text="中文原文" FontWeight="SemiBold" FontSize="14"
+                                          Margin="0,0,0,8" />
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
                                 <ui:TextBlock Text="{Binding SelectedLine.Chinese, Mode=OneWay}"
-                                              TextWrapping="Wrap" Margin="0,0,0,8" />
-                                <ui:TextBlock Text="日语原文" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                              FontSize="14" TextWrapping="Wrap" />
+                            </ScrollViewer>
+                        </Grid>
+                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ui:TextBlock Grid.Row="0" Text="日语原文" FontWeight="SemiBold" FontSize="14"
+                                          Margin="0,0,0,8" />
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
                                 <ui:TextBlock Text="{Binding SelectedLine.Japanese, Mode=OneWay}"
-                                              TextWrapping="Wrap" Margin="0,0,0,8" />
-                                <WrapPanel>
-                                    <ui:Button Content="播放已生成 WAV" Margin="0,0,8,4"
-                                               Command="{Binding PlayCachedWAVCommand, Mode=OneWay}" />
-                                    <ui:Button Content="停止试听" Margin="0,0,8,4"
-                                               Command="{Binding StopCachedWAVCommand, Mode=OneWay}" />
-                                    <ui:TextBlock Text="{Binding SelectedLine.State, Mode=OneWay}"
-                                                  VerticalAlignment="Center"
-                                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Border>
-                </Expander>
+                                              FontSize="14" TextWrapping="Wrap" />
+                            </ScrollViewer>
+                        </Grid>
+                        <StackPanel Grid.Row="2">
+                            <ui:TextBlock Text="{Binding SelectedLine.State, Mode=OneWay}"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Margin="0,0,0,8" />
+                            <WrapPanel>
+                                <ui:Button Content="播放已生成 WAV" Margin="0,0,8,4"
+                                           Command="{Binding PlayCachedWAVCommand, Mode=OneWay}" />
+                                <ui:Button Content="停止试听"
+                                           Command="{Binding StopCachedWAVCommand, Mode=OneWay}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
         </TabItem>
     </TabControl>

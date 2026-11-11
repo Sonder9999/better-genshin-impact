@@ -148,7 +148,7 @@ public partial class QuestVoiceStoryWorkspace
         _selectingInternally = true;
         try { SelectedChapter = chapters[0]; }
         finally { _selectingInternally = false; }
-        ActiveSelectionLabel = row.Title + (row.Kind == "series" ? " · 全系列" : " · 全章节");
+        ActiveSelectionLabel = row.Title;
         _ = LoadSelectionAsync(chapters.Select(c => c!).ToArray(), row.Title);
     }
 
@@ -167,13 +167,9 @@ public partial class QuestVoiceStoryWorkspace
     }
     private void UpdateCurrentScope()
     {
-        if (SelectedCatalogRow is { } selection)
-            ActiveSelectionLabel = selection.Title +
-                (selection.Kind == "series" ? " · 全系列" : " · 全章节");
-        TaskFilterStatus = $"已载入 {_loadedPairs.Count} 章 · {Lines.Count} 条对白 · 不需展开任务";
+        ActiveSelectionLabel = SelectedCatalogRow?.Title ?? "请选择剧情";
         OnPropertyChanged(nameof(VisibleLines));
     }
-
     /// <summary>Restore a whole series when legacy settings only named its first chapter.</summary>
     private void OnCatalogLoaded()
     {

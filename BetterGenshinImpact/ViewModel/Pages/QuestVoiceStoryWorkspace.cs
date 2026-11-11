@@ -63,6 +63,17 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
 
     /// <summary>单一全局配置，同步角色与引擎页面。</summary>
     public QuestVoiceConfig Config => _config;
+    /// <summary>旅行者选择：0 空，1 荧；映射既有配置，不新增保存字段。</summary>
+    public int TravelerChoiceIndex
+    {
+        get => _config.FemaleTraveler ? 1 : 0;
+        set
+        {
+            if (IsGenerating || value is not (0 or 1)) return;
+            _config.FemaleTraveler = value == 1;
+            OnPropertyChanged();
+        }
+    }
     /// <summary>剧情页与角色管理页共享同一编辑草稿和自动保存，不复制声线档案。</summary>
     public QuestVoiceManagementViewModel? Management { get; set; }
     /// <summary>全局章节目录。</summary>
@@ -82,13 +93,19 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>目录与台词加载诊断。</summary>
     [ObservableProperty] private string _catalogStatus = "未载入剧情目录";
     /// <summary>当前章节状态。</summary>
-    [ObservableProperty] private string _chapterStatus = "请从左侧选择剧情";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasChapterError))] private string _chapterStatus = "请从左侧选择剧情";
+    /// <summary>正常的章节计数与进度不占用界面；只对读取失败显示重试入口。</summary>
+    public bool HasChapterError => ChapterStatus.StartsWith("系列加载失败", StringComparison.Ordinal)
+        || ChapterStatus.StartsWith("剧情目录加载失败", StringComparison.Ordinal)
+        || ChapterStatus.StartsWith("无法重试", StringComparison.Ordinal)
+        || ChapterStatus.StartsWith("章节目录已更新", StringComparison.Ordinal);
+
     /// <summary>所选节点前后上下文。</summary>
     [ObservableProperty] private string _focusContext = "选择任意对白查看前后关系";
     /// <summary>P1 队列进度文本。</summary>
-    [ObservableProperty] private string _preSynthesisStatus = "尚未开始预合成";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasPreSynthesisActivity))] private string _preSynthesisStatus = "尚未开始预合成";
     /// <summary>已经完成的条数（包括缓存命中）。</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CacheHitRate))] private int _completed;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CacheHitRate))] [NotifyPropertyChangedFor(nameof(HasPreSynthesisActivity))] private int _completed;
     /// <summary>需要处理的总条数。</summary>
     [ObservableProperty] private int _total;
     /// <summary>已复用的 WAV 数量。</summary>
@@ -96,10 +113,14 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>生成失败的条数。</summary>
     [ObservableProperty] private int _failed;
     /// <summary>后台是否正在运行。</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsEditable))]
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsEditable))] [NotifyPropertyChangedFor(nameof(HasPreSynthesisActivity))]
     private bool _isGenerating;
     /// <summary>预合成时全局章节与语种不允许被改写。</summary>
     public bool IsEditable => !IsGenerating;
+    /// <summary>没有开始生成时隐藏冗余进度条；运行、完成、失败后才显示。</summary>
+    public bool HasPreSynthesisActivity => IsGenerating || Completed > 0 || Failed > 0
+        || PreSynthesisStatus.StartsWith("预合成已中断", StringComparison.Ordinal)
+        || PreSynthesisStatus.StartsWith("已停止", StringComparison.Ordinal);
     /// <summary>用于右侧资源操作区。</summary>
     public string CacheDirectory => _preSynthesis.CacheDirectory;
     /// <summary>只统计本模块生成的 WAV，不扫描模型、视频或其他工具缓存。</summary>
@@ -135,6 +156,8 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             if (args.PropertyName is nameof(QuestVoiceConfig.SpeechLanguage) or
                 nameof(QuestVoiceConfig.TravelerNickname) or nameof(QuestVoiceConfig.FemaleTraveler))
                 if (!IsGenerating) RebuildLines();
+            if (args.PropertyName == nameof(QuestVoiceConfig.FemaleTraveler))
+                OnPropertyChanged(nameof(TravelerChoiceIndex));
         };
     }
 
@@ -185,7 +208,11 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     public async Task EnsureLoadedAsync()
     {
         if (!_catalogLoaded) await LoadCatalogAsync(false);
-        if (Management is not null) await Management.EnsureLoadedAsync();
+        if (Management is not null)
+        {
+            await Management.EnsureLoadedAsync();
+            Management.SetCurrentStorySpeakers(Lines.Select(line => line.Speaker), _config.SpeechLanguage);
+        }
     }
 
     /// <summary>手动强制向 Yatta 请求最新章节目录。</summary>

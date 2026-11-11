@@ -18,6 +18,20 @@ public partial class QuestVoiceManagementViewModel
     /// <summary>本次匹配目标语言，仅用于筛选显式标记语言的声线名称。</summary>
     private string _storyLanguage = "jpn";
 
+    /// <summary>默认展示全部角色，也可仅查看未绑定或已绑定的声线。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayedStorySpeakers))]
+    private int _storyRoleFilter;
+
+    public IEnumerable<QuestVoiceManagementSpeaker> DisplayedStorySpeakers =>
+        CurrentStorySpeakers.Where(speaker => StoryRoleFilter switch
+        {
+            1 => string.IsNullOrWhiteSpace(speaker.VoiceId),
+            2 => !string.IsNullOrWhiteSpace(speaker.VoiceId),
+            _ => true
+        });
+    public string StoryRoleCountLabel => $"剧情角色（{_storyNames.Count}）";
+
     /// <summary>角色列表可切换仅显示当前剧情，不影响下方绑定或文件内容。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FilteredSpeakers))]
@@ -58,6 +72,18 @@ public partial class QuestVoiceManagementViewModel
         foreach (var name in names.Where(name => !string.IsNullOrWhiteSpace(name)))
             _storyNames.Add(name.Trim());
         _storyLanguage = language is "jpn" or "chs" ? language : "jpn";
+        // 保证当前剧情所有角色直接可见并可绑定；不自动猜测对应的声线。
+        if (IsLoaded && CanEditDraft)
+        {
+            var missing = MissingStorySpeakers.ToArray();
+            foreach (var name in missing)
+            {
+                var id = UniqueId("story", Speakers.SelectMany(x => new[] { x.Id, x.OriginalId }));
+                AddSpeakerItem(new QuestVoiceManagementSpeaker(
+                    new SpeakerDefinition(id, [name], Array.Empty<string>(), Array.Empty<string>(), null)));
+            }
+            if (missing.Length > 0) MarkDraftChanged();
+        }
         NotifyStorySpeakersChanged();
     }
 
@@ -65,6 +91,8 @@ public partial class QuestVoiceManagementViewModel
     private void NotifyStorySpeakersChanged()
     {
         OnPropertyChanged(nameof(CurrentStorySpeakers));
+        OnPropertyChanged(nameof(DisplayedStorySpeakers));
+        OnPropertyChanged(nameof(StoryRoleCountLabel));
         OnPropertyChanged(nameof(MissingStorySpeakers));
         OnPropertyChanged(nameof(CurrentStorySummary));
         OnPropertyChanged(nameof(FilteredSpeakers));
