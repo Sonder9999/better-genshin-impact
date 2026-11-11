@@ -37,47 +37,59 @@ public partial class QuestVoiceStoryWorkspace
         foreach (var pair in _loadedPairs)
         {
             var doc = pair.Chs;
-            var chapterTitle = Chapters.FirstOrDefault(c => c.Id == doc.ChapterId)?.Title
-                ?? doc.QuestName ?? doc.ChapterId;
-            rows.Add(new("chapter", chapterTitle, "章节"));
+            var chapterRows = new List<QuestVoiceTranscriptRow>();
             var shown = new HashSet<string>(StringComparer.Ordinal);
             foreach (var story in doc.Stories)
             {
-                var storyNodes = doc.Nodes.Where(n => n.StoryId == story.StoryId).ToArray();
+                var storyNodes = doc.Nodes.Where(node => node.StoryId == story.StoryId).ToArray();
                 if (storyNodes.Length == 0) continue;
-                rows.Add(new("story", story.Title ?? "未命名主任务", ""));
+                var storyRows = new List<QuestVoiceTranscriptRow>();
                 foreach (var task in story.Tasks)
                 {
-                    var nodes = storyNodes.Where(n => n.TaskId == task.TaskId).ToArray();
-                    if (nodes.Length == 0) continue;
-                    rows.Add(new("task", task.Title ?? "未命名子任务", ""));
-                    foreach (var node in nodes)
+                    var taskNodes = storyNodes.Where(node => node.TaskId == task.TaskId).ToArray();
+                    if (taskNodes.Length == 0) continue;
+                    var taskRows = new List<QuestVoiceTranscriptRow>();
+                    foreach (var node in taskNodes)
                     {
                         shown.Add(node.Key);
-                        AddTranscriptNode(rows, node, byNode, context);
+                        AddTranscriptNode(taskRows, node, byNode, context);
                     }
+                    // Do not show task titles that only own empty script/placeholder nodes.
+                    if (taskRows.Count == 0) continue;
+                    storyRows.Add(new("task", task.Title ?? "未命名子任务", ""));
+                    storyRows.AddRange(taskRows);
                 }
+                if (storyRows.Count == 0) continue;
+                chapterRows.Add(new("story", story.Title ?? "未命名主任务", ""));
+                chapterRows.AddRange(storyRows);
             }
-            // Some Yatta chapters have nodes without a story/task title. Never lose their readable content.
-            var extras = doc.Nodes.Where(node => !shown.Contains(node.Key)).ToArray();
-            if (extras.Length > 0)
+
+            // Scripts with no task/story association still need to be visible if meaningful.
+            var extras = new List<QuestVoiceTranscriptRow>();
+            foreach (var node in doc.Nodes.Where(node => !shown.Contains(node.Key)))
+                AddTranscriptNode(extras, node, byNode, context);
+            if (extras.Count > 0)
             {
-                var emitted = rows.Count;
-                foreach (var node in extras) AddTranscriptNode(rows, node, byNode, context);
-                if (rows.Count > emitted)
-                    rows.Insert(emitted, new("task", "其他剧情节点", ""));
+                chapterRows.Add(new("task", "其他剧情节点", ""));
+                chapterRows.AddRange(extras);
             }
+            if (chapterRows.Count == 0) continue;
+            var title = Chapters.FirstOrDefault(c => c.Id == doc.ChapterId)?.Title
+                ?? doc.QuestName ?? doc.ChapterId;
+            rows.Add(new("chapter", title, "章节"));
+            rows.AddRange(chapterRows);
         }
+
         TranscriptRows = new ObservableCollection<QuestVoiceTranscriptRow>(rows);
         OnPropertyChanged(nameof(TranscriptRows));
     }
-
     private static void AddTranscriptNode(List<QuestVoiceTranscriptRow> rows, QuestNode node, IReadOnlyDictionary<string, QuestVoiceDialogueRow> byNode,
         QuestTextContext context)
     {
         if (node.Type == "SingleDialog" && byNode.TryGetValue(node.Key, out var dialogue))
         {
-            rows.Add(new("dialogue", "", dialogue.Chinese, dialogue.Speaker, dialogue));
+            if (!string.IsNullOrWhiteSpace(dialogue.Chinese))
+                rows.Add(new("dialogue", "", dialogue.Chinese, dialogue.Speaker, dialogue));
             return;
         }
         if (node.Texts.Count == 0) return;

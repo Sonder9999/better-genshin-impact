@@ -252,6 +252,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             }
 
             var records = YattaQuestCatalogReader.Read(bytes);
+            ReadVerifiedEmptyChapters(bytes);
             Chapters.Clear();
             foreach (var chapter in records.OrderBy(x => x.Title, StringComparer.CurrentCulture))
                 Chapters.Add(chapter);
@@ -304,9 +305,24 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
                 loaded.Add(pair);
             }
             if (!ReferenceEquals(_selectionCancellation, cts)) return;
-            _loadedPairs.AddRange(loaded);
-            _pair = loaded.FirstOrDefault();
+            // A chapter with only empty dialogue/option fields should not occupy the reading
+            // list, the role list or the P1 synthesis queue. Full raw cache remains intact.
+            var readable = loaded.Where(HasReadableChapter).ToArray();
+            var newEmpty = false;
+            foreach (var empty in loaded.Except(readable))
+                newEmpty |= _verifiedEmptyChapters.Add(empty.Chs.ChapterId);
+            if (newEmpty) SaveVerifiedEmptyChapters();
+            _loadedPairs.AddRange(readable);
+            _pair = readable.FirstOrDefault();
+            if (readable.Length == 0)
+            {
+                StoryLoadFailure = "所选剧情没有可阅读的对白或对话选项。";
+                ChapterStatus = "系列加载失败：" + StoryLoadFailure;
+                RefreshCatalogRows();
+                return;
+            }
             RebuildLines();
+            RefreshCatalogRows();
             StoryLoadFailure = "";
             ChapterStatus = $"{selectionName} · {_loadedPairs.Count} 章 · {Lines.Count} 条对白 · {Lines.Count(x => x.CanSynthesize)} 条严格双语配对";
         }
@@ -355,7 +371,10 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             {
                 var cn = mapping.Chs!;
                 string Render(QuestNode? n) => n?.Texts.FirstOrDefault()?.Template.Render(context)?.Trim() ?? "";
-                updated.Add(new(mapping, cn.Role, Render(cn), Render(mapping.Jp)));
+                var chinese = Render(cn);
+                var japanese = Render(mapping.Jp);
+                if (!string.IsNullOrWhiteSpace(chinese) || !string.IsNullOrWhiteSpace(japanese))
+                    updated.Add(new(mapping, cn.Role, chinese, japanese));
             }
         Lines = new ObservableCollection<QuestVoiceDialogueRow>(updated);
         OnPropertyChanged(nameof(Lines));

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,6 +27,72 @@ public partial class QuestVoiceStoryWorkspace
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly List<DialogueLanguageMap> _loadedPairs = [];
+    /// <summary>Confirmed empty after reading actual dialogue. Never infer from an unfetched chapter.</summary>
+    private readonly HashSet<string> _verifiedEmptyChapters = new(StringComparer.Ordinal);
+    /// <summary>Saved only for chapters actually inspected; tied to the catalog version and expires after seven days.</summary>
+    private sealed record EmptyChapterIndex(string CatalogHash, DateTime CheckedUtc, string[] Ids);
+    private string _catalogHash = "";
+    private string EmptyChapterIndexPath => Path.Combine(
+        Path.GetDirectoryName(_catalogPath)!, "verified-empty-chapters.json");
+
+    private void ReadVerifiedEmptyChapters(byte[] catalogBytes)
+    {
+        _catalogHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(catalogBytes));
+        _verifiedEmptyChapters.Clear();
+        try
+        {
+            if (!File.Exists(EmptyChapterIndexPath)) return;
+            var index = JsonSerializer.Deserialize<EmptyChapterIndex>(File.ReadAllText(EmptyChapterIndexPath));
+            if (index is null || index.CatalogHash != _catalogHash ||
+                DateTime.UtcNow - index.CheckedUtc > TimeSpan.FromDays(7)) return;
+            foreach (var id in index.Ids) _verifiedEmptyChapters.Add(id);
+        }
+        catch (Exception) { /* Derived cache is optional; never block story browsing. */ }
+    }
+
+    private void SaveVerifiedEmptyChapters()
+    {
+        if (_catalogHash.Length == 0) return;
+        var temp = EmptyChapterIndexPath + "." + Guid.NewGuid().ToString("N") + ".partial";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(EmptyChapterIndexPath)!);
+            File.WriteAllText(temp, JsonSerializer.Serialize(new EmptyChapterIndex(
+                _catalogHash, DateTime.UtcNow, _verifiedEmptyChapters.OrderBy(id => id).ToArray())));
+            File.Move(temp, EmptyChapterIndexPath, true);
+        }
+        catch (Exception) { /* Filtering must not fail because a derived cache is locked. */ }
+        finally { try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } }
+    }
+    private static bool IsPublicChapter(YattaChapter chapter)
+    {
+        var name = chapter.Title.Trim();
+        if (name.Length == 0 || name is "(暂无标题)" or "（暂无标题）") return false;
+        // Yatta contains testing, hidden and unreleased metadata that users should not see.
+        if (name.Contains("(test)", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("（test）", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("$HIDDEN", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("$UNRELEASED", StringComparison.OrdinalIgnoreCase)) return false;
+        if (chapter.Raw.ValueKind == JsonValueKind.Object &&
+            chapter.Raw.TryGetProperty("chapterCount", out var count) &&
+            count.ValueKind == JsonValueKind.Number && count.TryGetInt32(out var n) && n <= 0)
+            return false;
+        return true;
+    }
+
+    private bool IsVisibleChapter(YattaChapter chapter) =>
+        IsPublicChapter(chapter) && !_verifiedEmptyChapters.Contains(chapter.Id);
+
+    /// <summary>Real node content, not metadata chapterCount or empty dialogue placeholders.</summary>
+    private bool HasReadableChapter(DialogueLanguageMap pair)
+    {
+        var context = new QuestTextContext(_config.TravelerNickname,
+            _config.FemaleTraveler ? TravelerGender.Female : TravelerGender.Male);
+        static bool Readable(QuestDocument doc, QuestTextContext ctx) =>
+            doc.Nodes.Any(node => node.Texts.Any(text =>
+                !string.IsNullOrWhiteSpace(text.Template.Render(ctx))));
+        return Readable(pair.Chs, context) || Readable(pair.Jp, context);
+    }
     private bool _rebuildingCatalog;
     private bool _selectingInternally;
     public ObservableCollection<QuestVoiceCatalogRow> CatalogRows { get; } = [];
@@ -90,7 +157,7 @@ public partial class QuestVoiceStoryWorkspace
         try
         {
             var term = ChapterSearch.Trim();
-            var all = Chapters.ToArray();
+            var all = Chapters.Where(IsVisibleChapter).ToArray();
             var next = new List<QuestVoiceCatalogRow>();
             foreach (var group in all.Where(c => SeriesName(c).Length > 0)
                          .GroupBy(SeriesName, StringComparer.Ordinal)
