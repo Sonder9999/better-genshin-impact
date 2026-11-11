@@ -114,7 +114,7 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
         [new(MissingVoicePolicy.Fallback, "改用默认 NPC 声线"), new(MissingVoicePolicy.Fail, "报错")];
     /// <summary>搜索同时匹配身份、正式名称、别名和 OCR 纠错名。</summary>
     public IEnumerable<QuestVoiceManagementSpeaker> FilteredSpeakers => Speakers.Where(x =>
-        !Same(x.Id, TravelerId) && !Same(x.OriginalId, TravelerId) &&
+        !IsTravelerSpeakerRow(x) &&
         (!ShowCurrentStoryOnly || IsStorySpeaker(x)) &&
         (string.IsNullOrWhiteSpace(SpeakerSearch) || string.Join("\n", x.Id, x.Names, x.Aliases, x.Corrections)
             .Contains(SpeakerSearch.Trim(), StringComparison.OrdinalIgnoreCase)));
@@ -381,6 +381,8 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
     private void Apply(RoutingCatalog catalog)
     {
         var nicknameNeedsSave = false;
+        var obsoleteTravelerRows = catalog.Speakers.Count(speaker =>
+            IsSafeObsoleteTravelerAutoRow(speaker, catalog.ProtagonistId));
         _loading = true;
         try
         {
@@ -388,7 +390,9 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
             foreach (var item in Speakers) item.PropertyChanged -= OnSpeakerChanged;
             foreach (var item in Profiles) item.PropertyChanged -= OnProfileChanged;
             Speakers.Clear(); Profiles.Clear();
-            foreach (var item in catalog.Speakers) AddSpeakerItem(new(item));
+            foreach (var item in catalog.Speakers.Where(speaker =>
+                !IsSafeObsoleteTravelerAutoRow(speaker, catalog.ProtagonistId)))
+                AddSpeakerItem(new(item));
             foreach (var item in catalog.Voices) AddProfileItem(new(item));
             PlayerNames = string.Join("\n", catalog.PlayerNames); TravelerId = catalog.ProtagonistId ?? "";
             // 旧文件的昵称迁移到唯一入口，已填写的新昵称则优先同步到路由草稿。
@@ -400,7 +404,7 @@ public partial class QuestVoiceManagementViewModel : ObservableObject
             MissingVoicePolicy = catalog.MissingVoicePolicy; IsLoaded = true; HasChanges = false; _savedProfiles = Profiles.ToDictionary(x => x.OriginalId, x => x.Build()); NotifyLists();
         }
         finally { _loading = false; }
-        if (nicknameNeedsSave) MarkDraftChanged();
+        if (nicknameNeedsSave || obsoleteTravelerRows > 0) MarkDraftChanged();
     }
 
     /// <summary>挂接角色行级草稿通知。</summary>

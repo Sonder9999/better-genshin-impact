@@ -4,6 +4,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using BetterGenshinImpact.GameTask.QuestVoice.Core.Routing;
+using BetterGenshinImpact.GameTask.QuestVoice.Features.Routing;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 
@@ -32,17 +33,30 @@ public partial class QuestVoiceManagementViewModel
         });
     public string StoryRoleCountLabel => $"剧情角色（{_storyNames.Count}）";
 
+    /// <summary>Only exact, independent speaker labels or configured player nicknames are reserved.</summary>
+    private bool IsTravelerStoryName(string name) =>
+        TravelerSpeakerNames.IsGeneric(name) ||
+        Same(name, _owner.Config.TravelerNickname) && !string.IsNullOrWhiteSpace(_owner.Config.TravelerNickname) ||
+        Lines(PlayerNames).Any(alias => Same(name, alias));
+
+    /// <summary>Any old generic row belongs to the pinned traveler rule, not the NPC editor.</summary>
+    private bool IsTravelerSpeakerRow(QuestVoiceManagementSpeaker speaker) =>
+        Same(speaker.Id, TravelerId) || Same(speaker.OriginalId, TravelerId) ||
+        Lines(speaker.Names) is { Length: > 0 } names && names.All(TravelerSpeakerNames.IsGeneric);
+
     /// <summary>角色列表可切换仅显示当前剧情，不影响下方绑定或文件内容。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FilteredSpeakers))]
     private bool _showCurrentStoryOnly;
 
     /// <summary>从已加载目录中找出当前章节出现的已建档角色。</summary>
-    public IEnumerable<QuestVoiceManagementSpeaker> CurrentStorySpeakers => Speakers.Where(IsStorySpeaker);
+    public IEnumerable<QuestVoiceManagementSpeaker> CurrentStorySpeakers =>
+        Speakers.Where(speaker => !IsTravelerSpeakerRow(speaker) && IsStorySpeaker(speaker));
 
     /// <summary>未建档者仍以原始游戏名显示，必须点击按钮才会写入草稿。</summary>
     public IEnumerable<string> MissingStorySpeakers => _storyNames
-        .Where(name => !Speakers.Any(item => NamesOf(item).Contains(name, StringComparer.OrdinalIgnoreCase)))
+        .Where(name => !IsTravelerStoryName(name) &&
+            !Speakers.Any(item => NamesOf(item).Contains(name, StringComparer.OrdinalIgnoreCase)))
         .OrderBy(name => name, StringComparer.CurrentCulture);
 
     /// <summary>当前剧情的角色数、已建档数和待建档数。</summary>
@@ -54,6 +68,18 @@ public partial class QuestVoiceManagementViewModel
             return $"当前剧情角色 {_storyNames.Count} · 已建档 {linked} · 待建档 {MissingStorySpeakers.Count()}";
         }
     }
+
+    /// <summary>
+    /// Drop only legacy, unbound auto-created "storyN" rows that represent the Traveler,
+    /// never a manually named, edited or voice-bound speaker entry.
+    /// </summary>
+    private static bool IsSafeObsoleteTravelerAutoRow(SpeakerDefinition speaker, string? protagonistId) =>
+        !Same(speaker.Id, protagonistId) &&
+        speaker.Id.StartsWith("story", StringComparison.OrdinalIgnoreCase) &&
+        speaker.Id.Length > 5 && speaker.Id[5..].All(char.IsDigit) &&
+        string.IsNullOrWhiteSpace(speaker.VoiceId) &&
+        speaker.Names.Count == 1 && TravelerSpeakerNames.IsGeneric(speaker.Names[0]) &&
+        speaker.Aliases.Count == 0 && speaker.Corrections.Count == 0;
 
     /// <summary>当前剧情筛选叠加用户搜索，不改变任何持久数据。</summary>
     private bool IsStorySpeaker(QuestVoiceManagementSpeaker speaker) =>
@@ -70,7 +96,10 @@ public partial class QuestVoiceManagementViewModel
     {
         _storyNames.Clear();
         foreach (var name in names.Where(name => !string.IsNullOrWhiteSpace(name)))
-            _storyNames.Add(name.Trim());
+        {
+            var speaker = name.Trim();
+            if (!IsTravelerStoryName(speaker)) _storyNames.Add(speaker);
+        }
         _storyLanguage = language is "jpn" or "chs" ? language : "jpn";
         // 保证当前剧情所有角色直接可见并可绑定；不自动猜测对应的声线。
         if (IsLoaded && CanEditDraft)
