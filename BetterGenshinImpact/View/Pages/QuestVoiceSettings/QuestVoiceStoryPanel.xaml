@@ -152,6 +152,7 @@
                                 </ComboBox>
                             </Grid>
                             <ListBox Grid.Row="1" ItemsSource="{Binding Management.DisplayedStorySpeakers, Mode=OneWay}"
+                                     Visibility="{Binding HasLoadedStoryRoles, Converter={StaticResource QuestStoryBoolVisibility}}"
                                      Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                      BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -184,6 +185,33 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                            <!-- 只在网络/缓存读取期间出现，使用 BetterGI 自带的无限旋转 ProgressRing。 -->
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding IsStoryLoading, Converter={StaticResource QuestStoryBoolVisibility}}"
+                                        MaxWidth="340" Margin="16" >
+                                <ui:ProgressRing Width="38" Height="38" IsIndeterminate="True"
+                                                 HorizontalAlignment="Center" Margin="0,0,0,12" />
+                                <ui:TextBlock Text="{Binding StoryLoadingText, Mode=OneWay}"
+                                              TextWrapping="Wrap" TextAlignment="Center"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <!-- 读取失败时给出明确的网络提示和同一选区重试入口。 -->
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding HasStoryLoadError, Converter={StaticResource QuestStoryBoolVisibility}}"
+                                        MaxWidth="360" Margin="16">
+                                <ui:TextBlock Text="无法加载剧情角色" FontSize="15" FontWeight="SemiBold"
+                                              TextAlignment="Center" Margin="0,0,0,10" />
+                                <ui:TextBlock Text="{Binding StoryLoadFailure, Mode=OneWay}"
+                                              TextWrapping="Wrap" TextAlignment="Center"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Margin="0,0,0,12" />
+                                <ui:Button Content="重试加载" HorizontalAlignment="Center"
+                                           Command="{Binding ReloadSelectedSelectionCommand, Mode=OneWay}" />
+                            </StackPanel>
+                            <ui:TextBlock Grid.Row="1" Text="请选择左侧的剧情系列或章节"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Visibility="{Binding IsStoryAwaitingSelection, Converter={StaticResource QuestStoryBoolVisibility}}" />
                         </Grid>
                     </Border>
 
@@ -192,7 +220,7 @@
                             <WrapPanel>
                                 <ui:Button Content="预合成所选剧情" Appearance="Primary" Margin="0,0,8,0"
                                            Command="{Binding StartPreSynthesisCommand, Mode=OneWay}"
-                                           IsEnabled="{Binding IsEditable, Mode=OneWay}" />
+                                           IsEnabled="{Binding CanGenerateSelectedStory, Mode=OneWay}" />
                                 <ui:Button Content="暂停" Margin="0,0,6,0"
                                            Command="{Binding PausePreSynthesisCommand, Mode=OneWay}"
                                            IsEnabled="{Binding IsGenerating, Mode=OneWay}" />

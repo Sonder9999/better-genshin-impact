@@ -113,7 +113,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     /// <summary>生成失败的条数。</summary>
     [ObservableProperty] private int _failed;
     /// <summary>后台是否正在运行。</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsEditable))] [NotifyPropertyChangedFor(nameof(HasPreSynthesisActivity))]
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsEditable))] [NotifyPropertyChangedFor(nameof(HasPreSynthesisActivity))] [NotifyPropertyChangedFor(nameof(CanGenerateSelectedStory))]
     private bool _isGenerating;
     /// <summary>预合成时全局章节与语种不允许被改写。</summary>
     public bool IsEditable => !IsGenerating;
@@ -275,6 +275,10 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
         _selectionCancellation?.Cancel();
         var cts = new CancellationTokenSource();
         _selectionCancellation = cts;
+        // 先通知右侧开始等待，再清空上一次的角色；避免网络请求时看起来像没响应。
+        StoryLoadFailure = "";
+        StoryLoadingText = $"正在加载 {selectionName} 的剧情角色…";
+        IsStoryLoading = true;
         ChapterStatus = $"准备 {chapters.Count} 章的 CHS / JP 双语脚本…";
         _loadedPairs.Clear();
         _pair = null;
@@ -291,6 +295,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             {
                 cts.Token.ThrowIfCancellationRequested();
                 var chapter = chapters[index];
+                StoryLoadingText = $"正在加载 {selectionName} · 第 {index + 1}/{chapters.Count} 章";
                 ChapterStatus = $"正在读取 {selectionName} · {index + 1}/{chapters.Count} 章：{chapter.Title}";
                 var pair = await QuestLanguagePairLoader.LoadAsync(_loader, chapter.Id,
                     cancellationToken: cts.Token);
@@ -302,20 +307,38 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
             _loadedPairs.AddRange(loaded);
             _pair = loaded.FirstOrDefault();
             RebuildLines();
+            StoryLoadFailure = "";
             ChapterStatus = $"{selectionName} · {_loadedPairs.Count} 章 · {Lines.Count} 条对白 · {Lines.Count(x => x.CanSynthesize)} 条严格双语配对";
         }
         catch (OperationCanceledException)
         {
-            if (ReferenceEquals(_selectionCancellation, cts)) ChapterStatus = "剧情加载已取消。";
+            if (ReferenceEquals(_selectionCancellation, cts))
+            {
+                StoryLoadFailure = cts.IsCancellationRequested
+                    ? "加载已取消，可以重试。"
+                    : "剧情数据源响应超时，请检查网络连接或代理设置后重试。";
+                ChapterStatus = "系列加载失败：" + StoryLoadFailure;
+            }
         }
         catch (Exception error)
         {
             if (ReferenceEquals(_selectionCancellation, cts))
-                ChapterStatus = $"系列加载失败（已读取 {loaded.Count}/{chapters.Count} 章，未采用不完整范围）：{error.Message}";
+            {
+                StoryLoadFailure = error is HttpRequestException
+                    ? "无法连接剧情数据源（Yatta），请检查网络或代理后重试。\n" + error.Message
+                    : "读取剧情数据失败，请重试。\n" + error.Message;
+                ChapterStatus = "系列加载失败：" + StoryLoadFailure;
+            }
         }
         finally
         {
-            if (ReferenceEquals(_selectionCancellation, cts)) _selectionCancellation = null;
+            if (ReferenceEquals(_selectionCancellation, cts))
+            {
+                // 不允许旧请求的 finally 覆盖新选中的系列的转圈状态。
+                IsStoryLoading = false;
+                NotifyStoryDisplayChanged();
+                _selectionCancellation = null;
+            }
             cts.Dispose();
         }
     }
@@ -345,7 +368,7 @@ public partial class QuestVoiceStoryWorkspace : ObservableObject
     [RelayCommand]
     private async Task StartPreSynthesisAsync()
     {
-        if (IsGenerating || _loadedPairs.Count == 0) { PreSynthesisStatus = "请先加载完整剧情系列的双语对白。"; return; }
+        if (!CanGenerateSelectedStory) { PreSynthesisStatus = "请先成功加载完整剧情系列的双语对白。"; return; }
         var entries = Lines.Where(x => x.CanSynthesize).ToArray();
         if (entries.Length == 0) { PreSynthesisStatus = "当前章节没有可安全配对的对白。"; return; }
         var requests = entries.Select(x => new QuestPreSynthesisLine(x.Key, x.Speaker,
