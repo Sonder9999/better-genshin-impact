@@ -1,0 +1,24 @@
+using System.Text.Json;
+
+namespace QuestVoice.Core;
+
+public sealed record QuestTaskDefinition(string TaskId, string? Title, JsonElement Raw);
+public sealed record QuestStoryDefinition(string StoryId, string? Title, JsonElement Raw,
+    IReadOnlyList<QuestTaskDefinition> Tasks);
+public static class QuestDocumentExtensions
+{
+    public static QuestDocument WithTextContext(this QuestDocument document, QuestTextContext context)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(context);
+        return document with
+        {
+            Nodes = Array.AsReadOnly(document.Nodes.Select(node => node with
+            {
+                Texts = Array.AsReadOnly(node.Texts.Select(text => text with { Text = text.Template.Render(context) }).ToArray())
+            }).ToArray())
+        };
+    }
+    public static QuestGraph ToQuestGraph(this QuestDocument document, QuestTextContext? context = null,
+        AudioIndex? audioIndex = null) => new([context is null ? document : document.WithTextContext(context)], audioIndex);
+}
